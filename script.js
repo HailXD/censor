@@ -18,12 +18,20 @@ const handleSize = 12;
 let selectedRectangle = null;
 let startX, startY;
 let offsetX, offsetY;
+let touchTimer = null;
 
 imageLoader.addEventListener('change', handleImage, false);
+// Unified Input Events
 canvas.addEventListener('mousedown', onMouseDown);
 canvas.addEventListener('mousemove', onMouseMove);
 canvas.addEventListener('mouseup', onMouseUp);
-canvas.addEventListener('mouseout', onMouseUp); // Use onMouseUp to stop any action
+canvas.addEventListener('mouseout', onMouseUp); // Treat mouse out as mouse up
+
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+canvas.addEventListener('touchend', onTouchEnd);
+canvas.addEventListener('touchcancel', onTouchEnd);
+
 canvas.addEventListener('contextmenu', removeRectangle);
 undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
@@ -107,9 +115,11 @@ function getMousePos(e) {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
     return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
     };
 }
 
@@ -139,96 +149,86 @@ function getClickedRectangle(x, y) {
     return null;
 }
 
-function onMouseDown(e) {
-    if (e.button !== 0) return;
-    const { x: mouseX, y: mouseY } = getMousePos(e);
-
-    const handle = getResizeHandle(mouseX, mouseY, selectedRectangle);
+function handleDown(x, y) {
+    const handle = getResizeHandle(x, y, selectedRectangle);
 
     if (handle) {
         isResizing = true;
         resizeHandle = handle;
-        startX = mouseX;
-        startY = mouseY;
     } else {
-        selectedRectangle = getClickedRectangle(mouseX, mouseY);
+        selectedRectangle = getClickedRectangle(x, y);
         if (selectedRectangle) {
             isMoving = true;
-            offsetX = mouseX - selectedRectangle.x;
-            offsetY = mouseY - selectedRectangle.y;
+            offsetX = x - selectedRectangle.x;
+            offsetY = y - selectedRectangle.y;
         } else {
             isDrawing = true;
-            startX = mouseX;
-            startY = mouseY;
         }
     }
+    startX = x;
+    startY = y;
     redrawCanvas();
 }
 
-function onMouseMove(e) {
-    const { x: mouseX, y: mouseY } = getMousePos(e);
-
+function handleMove(x, y) {
     if (isResizing && selectedRectangle) {
         const oldX = selectedRectangle.x;
         const oldY = selectedRectangle.y;
-        const oldW = selectedRectangle.width;
-        const oldH = selectedRectangle.height;
 
         switch (resizeHandle) {
             case 'top-left':
-                selectedRectangle.width += oldX - mouseX;
-                selectedRectangle.height += oldY - mouseY;
-                selectedRectangle.x = mouseX;
-                selectedRectangle.y = mouseY;
+                selectedRectangle.width += oldX - x;
+                selectedRectangle.height += oldY - y;
+                selectedRectangle.x = x;
+                selectedRectangle.y = y;
                 break;
             case 'top-right':
-                selectedRectangle.width = mouseX - oldX;
-                selectedRectangle.height += oldY - mouseY;
-                selectedRectangle.y = mouseY;
+                selectedRectangle.width = x - oldX;
+                selectedRectangle.height += oldY - y;
+                selectedRectangle.y = y;
                 break;
             case 'bottom-left':
-                selectedRectangle.width += oldX - mouseX;
-                selectedRectangle.height = mouseY - oldY;
-                selectedRectangle.x = mouseX;
+                selectedRectangle.width += oldX - x;
+                selectedRectangle.height = y - oldY;
+                selectedRectangle.x = x;
                 break;
             case 'bottom-right':
-                selectedRectangle.width = mouseX - oldX;
-                selectedRectangle.height = mouseY - oldY;
+                selectedRectangle.width = x - oldX;
+                selectedRectangle.height = y - oldY;
                 break;
             case 'top':
-                selectedRectangle.height += oldY - mouseY;
-                selectedRectangle.y = mouseY;
+                selectedRectangle.height += oldY - y;
+                selectedRectangle.y = y;
                 break;
             case 'bottom':
-                selectedRectangle.height = mouseY - oldY;
+                selectedRectangle.height = y - oldY;
                 break;
             case 'left':
-                selectedRectangle.width += oldX - mouseX;
-                selectedRectangle.x = mouseX;
+                selectedRectangle.width += oldX - x;
+                selectedRectangle.x = x;
                 break;
             case 'right':
-                selectedRectangle.width = mouseX - oldX;
+                selectedRectangle.width = x - oldX;
                 break;
         }
-        redrawCanvas();
     } else if (isMoving && selectedRectangle) {
-        selectedRectangle.x = mouseX - offsetX;
-        selectedRectangle.y = mouseY - offsetY;
-        redrawCanvas();
+        selectedRectangle.x = x - offsetX;
+        selectedRectangle.y = y - offsetY;
     } else if (isDrawing) {
         redrawCanvas();
         ctx.strokeStyle = 'red';
         ctx.lineWidth = 2;
-        ctx.strokeRect(startX, startY, mouseX - startX, mouseY - startY);
+        ctx.strokeRect(startX, startY, x - startX, y - startY);
+        return; // Return early to avoid redrawing again
     } else {
-        const handle = getResizeHandle(mouseX, mouseY, selectedRectangle);
+        const handle = getResizeHandle(x, y, selectedRectangle);
         canvas.style.cursor = handle ? 'pointer' : 'default';
     }
+    redrawCanvas();
 }
 
-function onMouseUp(e) {
+function handleUp(x, y) {
     if (isResizing && selectedRectangle) {
-        // Normalize rectangle
         if (selectedRectangle.width < 0) {
             selectedRectangle.x += selectedRectangle.width;
             selectedRectangle.width *= -1;
@@ -238,18 +238,18 @@ function onMouseUp(e) {
             selectedRectangle.height *= -1;
         }
     } else if (isDrawing) {
-        const { x: endX, y: endY } = getMousePos(e);
         const newRect = {
-            x: Math.min(startX, endX),
-            y: Math.min(startY, endY),
-            width: Math.abs(endX - startX),
-            height: Math.abs(endY - startY)
+            x: Math.min(startX, x),
+            y: Math.min(startY, y),
+            width: Math.abs(x - startX),
+            height: Math.abs(y - startY)
         };
         if (newRect.width > 5 && newRect.height > 5) {
             rectangles.push(newRect);
             selectedRectangle = newRect;
         }
     }
+
     isDrawing = false;
     isMoving = false;
     isResizing = false;
@@ -258,19 +258,33 @@ function onMouseUp(e) {
     redrawCanvas();
 }
 
+function onMouseDown(e) {
+    if (e.button !== 0) return; // Only handle left-click
+    const { x, y } = getMousePos(e);
+    handleDown(x, y);
+}
+
+function onMouseMove(e) {
+    const { x, y } = getMousePos(e);
+    handleMove(x, y);
+}
+
+function onMouseUp(e) {
+    const { x, y } = getMousePos(e);
+    handleUp(x, y);
+}
+
 function removeRectangle(e) {
     e.preventDefault(); // Prevent context menu
     const { x: clickX, y: clickY } = getMousePos(e);
+    removeRectangleAt(clickX, clickY);
+}
 
+function removeRectangleAt(x, y) {
     let removed = false;
     for (let i = rectangles.length - 1; i >= 0; i--) {
         const rect = rectangles[i];
-        if (
-            clickX >= rect.x &&
-            clickX <= rect.x + rect.width &&
-            clickY >= rect.y &&
-            clickY <= rect.y + rect.height
-        ) {
+        if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
             rectangles.splice(i, 1);
             removed = true;
             break; // Remove only the top-most rectangle
@@ -280,6 +294,42 @@ function removeRectangle(e) {
     if (removed) {
         saveState();
         redrawCanvas();
+    }
+}
+
+function onTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+        const { x, y } = getMousePos(e.touches[0]);
+        handleDown(x, y);
+
+        // Start timer for long-press to delete
+        clearTimeout(touchTimer);
+        touchTimer = setTimeout(() => {
+            // Check if still touching the same rectangle
+            const currentPos = getClickedRectangle(x, y);
+            if (currentPos && currentPos === selectedRectangle) {
+                removeRectangleAt(x, y);
+            }
+        }, 1000); // 1 second
+    }
+}
+
+function onTouchMove(e) {
+    e.preventDefault();
+    clearTimeout(touchTimer); // Cancel long press if finger moves
+    if (e.touches.length === 1) {
+        const { x, y } = getMousePos(e.touches[0]);
+        handleMove(x, y);
+    }
+}
+
+function onTouchEnd(e) {
+    e.preventDefault();
+    clearTimeout(touchTimer);
+    if (e.changedTouches.length === 1) {
+        const { x, y } = getMousePos(e.changedTouches[0]);
+        handleUp(x, y);
     }
 }
 
