@@ -14,7 +14,7 @@ let isDrawing = false;
 let isMoving = false;
 let isResizing = false;
 let resizeHandle = '';
-const handleSize = 8;
+const handleSize = 12;
 let selectedRectangle = null;
 let startX, startY;
 let offsetX, offsetY;
@@ -29,9 +29,22 @@ undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
 pixelateBtn.addEventListener('click', pixelateAndDownload);
 addRectBtn.addEventListener('click', () => {
-    // This button will be used for a different drawing mode later
-    // For now, it can serve as a placeholder or be used for mobile-specific actions
-    alert("Click and drag on the canvas to draw a rectangle.");
+    if (!img.src) {
+        alert("Please load an image first.");
+        return;
+    }
+    const rectWidth = canvas.width * 0.1;
+    const rectHeight = canvas.height * 0.1;
+    const newRect = {
+        x: (canvas.width - rectWidth) / 2,
+        y: (canvas.height - rectHeight) / 2,
+        width: rectWidth,
+        height: rectHeight
+    };
+    rectangles.push(newRect);
+    selectedRectangle = newRect;
+    saveState();
+    redrawCanvas();
 });
 
 
@@ -61,8 +74,13 @@ function redrawCanvas() {
 
 function drawRectangles() {
     rectangles.forEach(rect => {
-        ctx.strokeStyle = (rect === selectedRectangle) ? 'blue' : 'red';
-        ctx.lineWidth = 2;
+        if (rect === selectedRectangle) {
+            ctx.strokeStyle = 'cyan';
+            ctx.lineWidth = 4;
+        } else {
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+        }
         ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
         if (rect === selectedRectangle) {
             drawResizeHandles(rect);
@@ -71,7 +89,7 @@ function drawRectangles() {
 }
 
 function drawResizeHandles(rect) {
-    ctx.fillStyle = 'blue';
+    ctx.fillStyle = 'cyan';
     const halfHandle = handleSize / 2;
     // Corners
     ctx.fillRect(rect.x - halfHandle, rect.y - halfHandle, handleSize, handleSize); // TL
@@ -308,47 +326,31 @@ function pixelateAndDownload() {
         return;
     }
 
-    // Create a temporary canvas to apply pixelation
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     tempCanvas.width = canvas.width;
     tempCanvas.height = canvas.height;
 
-    // Draw the original image
     tempCtx.drawImage(img, 0, 0);
 
-    // Apply pixelation for each rectangle
-    const pixelationLevel = 20; // Larger number = more pixelated
+    const pixelationLevel = 20;
     rectangles.forEach(rect => {
-        const imageData = tempCtx.getImageData(rect.x, rect.y, rect.width, rect.height);
-        const data = imageData.data;
-        for (let y = 0; y < rect.height; y += pixelationLevel) {
-            for (let x = 0; x < rect.width; x += pixelationLevel) {
-                // Get the color of the top-left pixel of the block
-                const pixelIndex = (y * rect.width + x) * 4;
-                const r = data[pixelIndex];
-                const g = data[pixelIndex + 1];
-                const b = data[pixelIndex + 2];
-                const a = data[pixelIndex + 3];
+        if (rect.width <= 0 || rect.height <= 0) return;
 
-                // Apply this color to the entire block
-                for (let blockY = 0; blockY < pixelationLevel; blockY++) {
-                    for (let blockX = 0; blockX < pixelationLevel; blockX++) {
-                        if (x + blockX < rect.width && y + blockY < rect.height) {
-                            const i = ((y + blockY) * rect.width + (x + blockX)) * 4;
-                            data[i] = r;
-                            data[i + 1] = g;
-                            data[i + 2] = b;
-                            data[i + 3] = a;
-                        }
-                    }
-                }
+        for (let y = rect.y; y < rect.y + rect.height; y += pixelationLevel) {
+            for (let x = rect.x; x < rect.x + rect.width; x += pixelationLevel) {
+                // Get the color of the top-left pixel of the block
+                const pixelData = ctx.getImageData(x, y, 1, 1).data;
+                tempCtx.fillStyle = `rgba(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]}, ${pixelData[3] / 255})`;
+                
+                // Draw a block of that color, ensuring it doesn't go outside the rectangle
+                const blockWidth = Math.min(pixelationLevel, rect.x + rect.width - x);
+                const blockHeight = Math.min(pixelationLevel, rect.y + rect.height - y);
+                tempCtx.fillRect(x, y, blockWidth, blockHeight);
             }
         }
-        tempCtx.putImageData(imageData, rect.x, rect.y);
     });
 
-    // Trigger download
     const link = document.createElement('a');
     link.download = 'censored-image.png';
     link.href = tempCanvas.toDataURL('image/png');
