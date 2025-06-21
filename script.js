@@ -14,7 +14,7 @@ let isDrawing = false;
 let isMoving = false;
 let isResizing = false;
 let resizeHandle = '';
-const handleSize = 12;
+const handleSize = 20;
 let selectedRectangle = null;
 let startX, startY;
 let offsetX, offsetY;
