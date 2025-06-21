@@ -339,8 +339,8 @@ function pixelateAndDownload() {
 
         for (let y = rect.y; y < rect.y + rect.height; y += pixelationLevel) {
             for (let x = rect.x; x < rect.x + rect.width; x += pixelationLevel) {
-                // Get the color of the top-left pixel of the block
-                const pixelData = ctx.getImageData(x, y, 1, 1).data;
+                // Get the color of the top-left pixel of the block from the clean temporary canvas
+                const pixelData = tempCtx.getImageData(x, y, 1, 1).data;
                 tempCtx.fillStyle = `rgba(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]}, ${pixelData[3] / 255})`;
                 
                 // Draw a block of that color, ensuring it doesn't go outside the rectangle
