@@ -16,7 +16,7 @@ let isMoving = false;
 let isResizing = false;
 let isPanning = false;
 let resizeHandle = "";
-const handleSize = 20;
+const handleSize = 14;
 let selectedRectangle = null;
 let startX, startY;
 let offsetX, offsetY;
@@ -97,7 +97,7 @@ function redrawCanvas() {
 
 function drawRectangles() {
     rectangles.forEach((rect) => {
-        ctx.lineWidth = rect === selectedRectangle ? 4 / scale : 2 / scale;
+        ctx.lineWidth = rect === selectedRectangle ? 3 / scale : 1.5 / scale;
         ctx.strokeStyle = rect === selectedRectangle ? "cyan" : "white";
         ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
         if (rect === selectedRectangle) {
