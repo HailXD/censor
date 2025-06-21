@@ -10,9 +10,12 @@ let img = new Image();
 let rectangles = [];
 let history = [];
 let historyIndex = -1;
+
+// Interaction state
 let isDrawing = false;
 let isMoving = false;
 let isResizing = false;
+let isPanning = false;
 let resizeHandle = '';
 const handleSize = 20;
 let selectedRectangle = null;
@@ -20,49 +23,41 @@ let startX, startY;
 let offsetX, offsetY;
 let touchTimer = null;
 
+// Transformation state
+let scale = 1;
+let originX = 0;
+let originY = 0;
+let panStartX, panStartY;
+let initialPinchDistance = null;
+
+// --- Event Listeners ---
 imageLoader.addEventListener('change', handleImage, false);
-// Unified Input Events
 canvas.addEventListener('mousedown', onMouseDown);
 canvas.addEventListener('mousemove', onMouseMove);
 canvas.addEventListener('mouseup', onMouseUp);
-canvas.addEventListener('mouseout', onMouseUp); // Treat mouse out as mouse up
+canvas.addEventListener('mouseout', onMouseUp);
+canvas.addEventListener('wheel', onWheel, { passive: false });
+canvas.addEventListener('contextmenu', removeRectangle);
 
 canvas.addEventListener('touchstart', onTouchStart, { passive: false });
 canvas.addEventListener('touchmove', onTouchMove, { passive: false });
 canvas.addEventListener('touchend', onTouchEnd);
 canvas.addEventListener('touchcancel', onTouchEnd);
 
-canvas.addEventListener('contextmenu', removeRectangle);
 undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
-pixelateBtn.addEventListener('click', pixelateAndDownload);
-addRectBtn.addEventListener('click', () => {
-    if (!img.src) {
-        alert("Please load an image first.");
-        return;
-    }
-    const rectWidth = canvas.width * 0.1;
-    const rectHeight = canvas.height * 0.1;
-    const newRect = {
-        x: (canvas.width - rectWidth) / 2,
-        y: (canvas.height - rectHeight) / 2,
-        width: rectWidth,
-        height: rectHeight
-    };
-    rectangles.push(newRect);
-    selectedRectangle = newRect;
-    saveState();
-    redrawCanvas();
-});
+pixelateBtn.addEventListener('click', pixelateAndOpenInTab);
+addRectBtn.addEventListener('click', addCenterRectangle);
 
+
+// --- Core Functions ---
 
 function handleImage(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
         img = new Image();
         img.onload = function() {
-            canvas.width = img.width;
-            canvas.height = img.height;
+            resetCanvasState();
             rectangles = [];
             history = [];
             historyIndex = -1;
@@ -74,21 +69,42 @@ function handleImage(e) {
     reader.readAsDataURL(e.target.files[0]);
 }
 
+function resetCanvasState() {
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+
+    const canvasAspect = canvas.width / canvas.height;
+    const imageAspect = img.width / img.height;
+
+    if (imageAspect > canvasAspect) {
+        scale = canvas.width / img.width;
+        originX = 0;
+        originY = (canvas.height - img.height * scale) / 2;
+    } else {
+        scale = canvas.height / img.height;
+        originY = 0;
+        originX = (canvas.width - img.width * scale) / 2;
+    }
+}
+
 function redrawCanvas() {
+    ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
+    ctx.translate(originX, originY);
+    ctx.scale(scale, scale);
+
+    if (img.src) {
+        ctx.drawImage(img, 0, 0);
+    }
     drawRectangles();
+
+    ctx.restore();
 }
 
 function drawRectangles() {
     rectangles.forEach(rect => {
-        if (rect === selectedRectangle) {
-            ctx.strokeStyle = 'cyan';
-            ctx.lineWidth = 4;
-        } else {
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-        }
+        ctx.lineWidth = (rect === selectedRectangle) ? 4 / scale : 2 / scale;
+        ctx.strokeStyle = (rect === selectedRectangle) ? 'cyan' : 'white';
         ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
         if (rect === selectedRectangle) {
             drawResizeHandles(rect);
@@ -98,60 +114,24 @@ function drawRectangles() {
 
 function drawResizeHandles(rect) {
     ctx.fillStyle = 'cyan';
-    const halfHandle = handleSize / 2;
+    const scaledHandleSize = handleSize / scale;
+    const halfHandle = scaledHandleSize / 2;
     // Corners
-    ctx.fillRect(rect.x - halfHandle, rect.y - halfHandle, handleSize, handleSize); // TL
-    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y - halfHandle, handleSize, handleSize); // TR
-    ctx.fillRect(rect.x - halfHandle, rect.y + rect.height - halfHandle, handleSize, handleSize); // BL
-    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y + rect.height - halfHandle, handleSize, handleSize); // BR
+    ctx.fillRect(rect.x - halfHandle, rect.y - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x - halfHandle, rect.y + rect.height - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y + rect.height - halfHandle, scaledHandleSize, scaledHandleSize);
     // Edges
-    ctx.fillRect(rect.x + rect.width / 2 - halfHandle, rect.y - halfHandle, handleSize, handleSize); // T
-    ctx.fillRect(rect.x + rect.width / 2 - halfHandle, rect.y + rect.height - halfHandle, handleSize, handleSize); // B
-    ctx.fillRect(rect.x - halfHandle, rect.y + rect.height / 2 - halfHandle, handleSize, handleSize); // L
-    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y + rect.height / 2 - halfHandle, handleSize, handleSize); // R
+    ctx.fillRect(rect.x + rect.width / 2 - halfHandle, rect.y - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x + rect.width / 2 - halfHandle, rect.y + rect.height - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x - halfHandle, rect.y + rect.height / 2 - halfHandle, scaledHandleSize, scaledHandleSize);
+    ctx.fillRect(rect.x + rect.width - halfHandle, rect.y + rect.height / 2 - halfHandle, scaledHandleSize, scaledHandleSize);
 }
 
-function getMousePos(e) {
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    return {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top) * scaleY
-    };
-}
-
-function getResizeHandle(x, y, rect) {
-    if (!rect) return '';
-    const halfHandle = handleSize / 2;
-    // Corners
-    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top-left';
-    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top-right';
-    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom-left';
-    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom-right';
-    // Edges
-    if (x > rect.x + rect.width / 2 - halfHandle && x < rect.x + rect.width / 2 + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top';
-    if (x > rect.x + rect.width / 2 - halfHandle && x < rect.x + rect.width / 2 + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom';
-    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y + rect.height / 2 - halfHandle && y < rect.y + rect.height / 2 + halfHandle) return 'left';
-    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y + rect.height / 2 - halfHandle && y < rect.y + rect.height / 2 + halfHandle) return 'right';
-    return '';
-}
-
-function getClickedRectangle(x, y) {
-    for (let i = rectangles.length - 1; i >= 0; i--) {
-        const rect = rectangles[i];
-        if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
-            return rect;
-        }
-    }
-    return null;
-}
+// --- Input Handling ---
 
 function handleDown(x, y) {
     const handle = getResizeHandle(x, y, selectedRectangle);
-
     if (handle) {
         isResizing = true;
         resizeHandle = handle;
@@ -174,7 +154,6 @@ function handleMove(x, y) {
     if (isResizing && selectedRectangle) {
         const oldX = selectedRectangle.x;
         const oldY = selectedRectangle.y;
-
         switch (resizeHandle) {
             case 'top-left':
                 selectedRectangle.width += oldX - x;
@@ -215,11 +194,15 @@ function handleMove(x, y) {
         selectedRectangle.x = x - offsetX;
         selectedRectangle.y = y - offsetY;
     } else if (isDrawing) {
-        redrawCanvas();
+        redrawCanvas(); // Redraw the base image and existing rectangles
+        ctx.save();
+        ctx.translate(originX, originY);
+        ctx.scale(scale, scale);
+        ctx.lineWidth = 2 / scale;
         ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
         ctx.strokeRect(startX, startY, x - startX, y - startY);
-        return; // Return early to avoid redrawing again
+        ctx.restore();
+        return; // Return early to avoid the final redrawCanvas
     } else {
         const handle = getResizeHandle(x, y, selectedRectangle);
         canvas.style.cursor = handle ? 'pointer' : 'default';
@@ -244,39 +227,162 @@ function handleUp(x, y) {
             width: Math.abs(x - startX),
             height: Math.abs(y - startY)
         };
-        if (newRect.width > 5 && newRect.height > 5) {
+        if (newRect.width > 5 / scale && newRect.height > 5 / scale) {
             rectangles.push(newRect);
             selectedRectangle = newRect;
         }
     }
-
     isDrawing = false;
     isMoving = false;
     isResizing = false;
+    isPanning = false;
     resizeHandle = '';
     saveState();
     redrawCanvas();
 }
 
+// --- Mouse Events ---
+
 function onMouseDown(e) {
-    if (e.button !== 0) return; // Only handle left-click
-    const { x, y } = getMousePos(e);
+    if (e.button === 1 || e.ctrlKey) {
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        return;
+    }
+    if (e.button !== 0) return;
+    const { x, y } = getTransformedPoint(e.clientX, e.clientY);
     handleDown(x, y);
 }
 
 function onMouseMove(e) {
-    const { x, y } = getMousePos(e);
+    if (isPanning) {
+        originX += e.clientX - panStartX;
+        originY += e.clientY - panStartY;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        redrawCanvas();
+        return;
+    }
+    const { x, y } = getTransformedPoint(e.clientX, e.clientY);
     handleMove(x, y);
 }
 
 function onMouseUp(e) {
-    const { x, y } = getMousePos(e);
+    if (isPanning) {
+        isPanning = false;
+        return;
+    }
+    const { x, y } = getTransformedPoint(e.clientX, e.clientY);
     handleUp(x, y);
 }
 
+// --- Touch Events ---
+
+function onTouchStart(e) {
+    e.preventDefault();
+    clearTimeout(touchTimer);
+
+    if (e.touches.length === 1) {
+        const { x, y } = getTransformedPoint(e.touches[0].clientX, e.touches[0].clientY);
+        handleDown(x, y);
+        touchTimer = setTimeout(() => {
+            const currentPos = getClickedRectangle(x, y);
+            if (currentPos && currentPos === selectedRectangle) {
+                removeRectangleAt(x, y);
+            }
+        }, 1000);
+    } else if (e.touches.length === 2) {
+        isPanning = true;
+        panStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        panStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        initialPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    }
+}
+
+function onTouchMove(e) {
+    e.preventDefault();
+    clearTimeout(touchTimer);
+
+    if (e.touches.length === 1 && !isPanning) {
+        const { x, y } = getTransformedPoint(e.touches[0].clientX, e.touches[0].clientY);
+        handleMove(x, y);
+    } else if (e.touches.length === 2) {
+        const newPinchDistance = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        const pinchRatio = newPinchDistance / initialPinchDistance;
+        const newScale = Math.min(Math.max(0.1, scale * pinchRatio), 10);
+        
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        
+        originX = midX - (midX - originX) * (newScale / scale);
+        originY = midY - (midY - originY) * (newScale / scale);
+        scale = newScale;
+        initialPinchDistance = newPinchDistance;
+        
+        const newPanX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const newPanY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        originX += newPanX - panStartX;
+        originY += newPanY - panStartY;
+        panStartX = newPanX;
+        panStartY = newPanY;
+        
+        redrawCanvas();
+    }
+}
+
+function onTouchEnd(e) {
+    e.preventDefault();
+    clearTimeout(touchTimer);
+    initialPinchDistance = null;
+    isPanning = false;
+    
+    if (e.changedTouches.length === 1) {
+        const { x, y } = getTransformedPoint(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+        handleUp(x, y);
+    }
+}
+
+// --- Utility and Action Functions ---
+
+function getTransformedPoint(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (clientX - rect.left - originX) / scale,
+        y: (clientY - rect.top - originY) / scale
+    };
+}
+
+function getResizeHandle(x, y, rect) {
+    if (!rect) return '';
+    const scaledHandleSize = handleSize / scale;
+    const halfHandle = scaledHandleSize / 2;
+    // Corners
+    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top-left';
+    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top-right';
+    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom-left';
+    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom-right';
+    // Edges
+    if (x > rect.x + rect.width / 2 - halfHandle && x < rect.x + rect.width / 2 + halfHandle && y > rect.y - halfHandle && y < rect.y + halfHandle) return 'top';
+    if (x > rect.x + rect.width / 2 - halfHandle && x < rect.x + rect.width / 2 + halfHandle && y > rect.y + rect.height - halfHandle && y < rect.y + rect.height + halfHandle) return 'bottom';
+    if (x > rect.x - halfHandle && x < rect.x + halfHandle && y > rect.y + rect.height / 2 - halfHandle && y < rect.y + rect.height / 2 + halfHandle) return 'left';
+    if (x > rect.x + rect.width - halfHandle && x < rect.x + rect.width + halfHandle && y > rect.y + rect.height / 2 - halfHandle && y < rect.y + rect.height / 2 + halfHandle) return 'right';
+    return '';
+}
+
+function getClickedRectangle(x, y) {
+    for (let i = rectangles.length - 1; i >= 0; i--) {
+        const rect = rectangles[i];
+        if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
+            return rect;
+        }
+    }
+    return null;
+}
+
 function removeRectangle(e) {
-    e.preventDefault(); // Prevent context menu
-    const { x: clickX, y: clickY } = getMousePos(e);
+    e.preventDefault();
+    const { x: clickX, y: clickY } = getTransformedPoint(e.clientX, e.clientY);
     removeRectangleAt(clickX, clickY);
 }
 
@@ -287,58 +393,91 @@ function removeRectangleAt(x, y) {
         if (x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height) {
             rectangles.splice(i, 1);
             removed = true;
-            break; // Remove only the top-most rectangle
+            break;
         }
     }
-
     if (removed) {
         saveState();
         redrawCanvas();
     }
 }
 
-function onTouchStart(e) {
-    e.preventDefault();
-    if (e.touches.length === 1) {
-        const { x, y } = getMousePos(e.touches[0]);
-        handleDown(x, y);
+function addCenterRectangle() {
+    if (!img.src) {
+        alert("Please load an image first.");
+        return;
+    }
+    const rectWidth = img.width * 0.1;
+    const rectHeight = img.height * 0.1;
+    const newRect = {
+        x: (img.width - rectWidth) / 2,
+        y: (img.height - rectHeight) / 2,
+        width: rectWidth,
+        height: rectHeight
+    };
+    rectangles.push(newRect);
+    selectedRectangle = newRect;
+    saveState();
+    redrawCanvas();
+}
 
-        // Start timer for long-press to delete
-        clearTimeout(touchTimer);
-        touchTimer = setTimeout(() => {
-            // Check if still touching the same rectangle
-            const currentPos = getClickedRectangle(x, y);
-            if (currentPos && currentPos === selectedRectangle) {
-                removeRectangleAt(x, y);
+function pixelateAndOpenInTab() {
+    if (!img.src) {
+        alert("Please load an image first.");
+        return;
+    }
+
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+
+    tempCtx.drawImage(img, 0, 0);
+
+    const pixelationLevel = 20;
+    rectangles.forEach(rect => {
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        for (let y = rect.y; y < rect.y + rect.height; y += pixelationLevel) {
+            for (let x = rect.x; x < rect.x + rect.width; x += pixelationLevel) {
+                const pixelData = tempCtx.getImageData(x, y, 1, 1).data;
+                tempCtx.fillStyle = `rgba(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]}, ${pixelData[3] / 255})`;
+                
+                const blockWidth = Math.min(pixelationLevel, rect.x + rect.width - x);
+                const blockHeight = Math.min(pixelationLevel, rect.y + rect.height - y);
+                tempCtx.fillRect(x, y, blockWidth, blockHeight);
             }
-        }, 1000); // 1 second
-    }
+        }
+    });
+
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    const newTab = window.open();
+    newTab.document.body.innerHTML = `<img src="${dataUrl}" style="max-width: 100%; background-color: #333;">`;
 }
 
-function onTouchMove(e) {
+function onWheel(e) {
     e.preventDefault();
-    clearTimeout(touchTimer); // Cancel long press if finger moves
-    if (e.touches.length === 1) {
-        const { x, y } = getMousePos(e.touches[0]);
-        handleMove(x, y);
-    }
+    
+    const scaleAmount = -e.deltaY * 0.001;
+    const newScale = Math.min(Math.max(0.1, scale + scaleAmount), 10);
+    const scaleRatio = newScale / scale;
+
+    const mouseX = e.clientX - canvas.getBoundingClientRect().left;
+    const mouseY = e.clientY - canvas.getBoundingClientRect().top;
+    
+    originX = mouseX - (mouseX - originX) * scaleRatio;
+    originY = mouseY - (mouseY - originY) * scaleRatio;
+    scale = newScale;
+
+    redrawCanvas();
 }
 
-function onTouchEnd(e) {
-    e.preventDefault();
-    clearTimeout(touchTimer);
-    if (e.changedTouches.length === 1) {
-        const { x, y } = getMousePos(e.changedTouches[0]);
-        handleUp(x, y);
-    }
-}
+// --- History Management ---
 
 function saveState() {
-    // Clear future history
     if (historyIndex < history.length - 1) {
         history.splice(historyIndex + 1);
     }
-    // Deep copy of rectangles array
     const newState = JSON.parse(JSON.stringify(rectangles));
     history.push(newState);
     historyIndex = history.length - 1;
@@ -368,41 +507,4 @@ function redo() {
 function updateUndoRedoButtons() {
     undoBtn.disabled = historyIndex <= 0;
     redoBtn.disabled = historyIndex >= history.length - 1;
-}
-
-function pixelateAndDownload() {
-    if (!img.src) {
-        alert("Please load an image first.");
-        return;
-    }
-
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-
-    tempCtx.drawImage(img, 0, 0);
-
-    const pixelationLevel = 20;
-    rectangles.forEach(rect => {
-        if (rect.width <= 0 || rect.height <= 0) return;
-
-        for (let y = rect.y; y < rect.y + rect.height; y += pixelationLevel) {
-            for (let x = rect.x; x < rect.x + rect.width; x += pixelationLevel) {
-                // Get the color of the top-left pixel of the block from the clean temporary canvas
-                const pixelData = tempCtx.getImageData(x, y, 1, 1).data;
-                tempCtx.fillStyle = `rgba(${pixelData[0]}, ${pixelData[1]}, ${pixelData[2]}, ${pixelData[3] / 255})`;
-                
-                // Draw a block of that color, ensuring it doesn't go outside the rectangle
-                const blockWidth = Math.min(pixelationLevel, rect.x + rect.width - x);
-                const blockHeight = Math.min(pixelationLevel, rect.y + rect.height - y);
-                tempCtx.fillRect(x, y, blockWidth, blockHeight);
-            }
-        }
-    });
-
-    const link = document.createElement('a');
-    link.download = 'censored-image.png';
-    link.href = tempCanvas.toDataURL('image/png');
-    link.click();
 }
