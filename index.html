@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, user-scalable=no"
+        />
+        <title>Censor App</title>
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <div id="app-container">
+            <div id="canvas-container">
+                <canvas id="censor-canvas"></canvas>
+            </div>
+            <div id="controls">
+                <input type="file" id="image-loader" accept="image/*" />
+                <button id="add-rect-btn">Add Rectangle</button>
+                <button id="undo-btn">Undo</button>
+                <button id="redo-btn">Redo</button>
+                <button id="pixelate-btn">Pixelate</button>
+            </div>
+        </div>
+        <script src="script.js"></script>
+    </body>
+</html>
