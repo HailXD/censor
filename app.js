@@ -9,6 +9,7 @@ const statusPill = document.getElementById("status");
 
 const fileInput = document.getElementById("file-input");
 const undoButton = document.getElementById("undo");
+const downloadButton = document.getElementById("download");
 
 const brushSizeInput = document.getElementById("brush-size");
 const brushSizeValue = document.getElementById("brush-size-value");
@@ -70,6 +71,7 @@ const state = {
   isHovering: false,
   history: [],
   historyLimit: 30,
+  fileName: "image",
   dpr: window.devicePixelRatio || 1,
 };
 
@@ -84,6 +86,10 @@ const setStatus = (message) => {
 
 const updateUndoState = () => {
   undoButton.disabled = state.history.length === 0;
+};
+
+const updateDownloadState = () => {
+  downloadButton.disabled = !hasImage;
 };
 
 const pushHistory = () => {
@@ -474,11 +480,14 @@ const loadImage = (file) => {
     resetStroke();
 
     hasImage = true;
+    state.fileName =
+      file.name?.replace(/\.[^/.]+$/, "")?.trim() || "image";
     emptyState.hidden = true;
     state.history = [];
     state.isDrawing = false;
     state.isHovering = false;
     updateUndoState();
+    updateDownloadState();
     fitToView();
     refreshDerivedCanvases();
     scheduleRender();
@@ -581,6 +590,28 @@ const endStroke = (event) => {
   }
 };
 
+const downloadOutput = () => {
+  if (!hasImage) return;
+  rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+  const baseName = state.fileName || "image";
+  const fileName = `censored_${baseName}.png`;
+  censoredCanvas.toBlob((blob) => {
+    if (!blob) {
+      setStatus("Could not export image.");
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setStatus(`Downloaded ${fileName}.`);
+  }, "image/png");
+};
+
 const handlePointerLeave = () => {
   state.isHovering = false;
   if (!state.isDrawing) {
@@ -676,6 +707,7 @@ zoomFitButton.addEventListener("click", () => {
 });
 
 undoButton.addEventListener("click", undo);
+downloadButton.addEventListener("click", downloadOutput);
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
@@ -756,4 +788,5 @@ updateOutputs();
 updateEffectUI();
 updateToolUI();
 updateShapeUI();
+updateDownloadState();
 resizeDisplay();
