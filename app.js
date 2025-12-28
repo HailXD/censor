@@ -6,6 +6,7 @@ const inputWrap = document.getElementById("input-wrap");
 const outputWrap = document.getElementById("output-wrap");
 const emptyState = document.getElementById("empty-state");
 const statusPill = document.getElementById("status");
+const panel = document.querySelector(".panel");
 
 const fileInput = document.getElementById("file-input");
 const undoButton = document.getElementById("undo");
@@ -612,6 +613,17 @@ const downloadOutput = () => {
   }, "image/png");
 };
 
+const openMenu = () => {
+  panel.classList.add("is-open");
+};
+
+const handleInputClick = () => {
+  openMenu();
+  if (!hasImage) {
+    fileInput.click();
+  }
+};
+
 const handlePointerLeave = () => {
   state.isHovering = false;
   if (!state.isDrawing) {
@@ -668,6 +680,7 @@ inputCanvas.addEventListener("pointermove", continueStroke);
 inputCanvas.addEventListener("pointerup", endStroke);
 inputCanvas.addEventListener("pointercancel", endStroke);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
+inputWrap.addEventListener("click", handleInputClick);
 
 const panCanvases = [inputCanvas, outputCanvas];
 panCanvases.forEach((canvas) => {

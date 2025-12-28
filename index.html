@@ -20,16 +20,45 @@
         <div class="status-pill" id="status">Ready</div>
       </header>
 
-      <aside class="panel">
-        <section class="control-group">
-          <h3>Image</h3>
-          <label class="file-input">
-            <input type="file" id="file-input" accept="image/*" />
-            <span>Select image</span>
-          </label>
-          <p class="hint">Paste with Ctrl+V / Cmd+V or long-press to paste.</p>
-        </section>
+      <input type="file" id="file-input" accept="image/*" class="file-hidden" />
 
+      <main class="stage">
+        <div class="canvas-shell">
+          <div class="canvas-grid">
+            <div class="canvas-panel">
+              <span class="canvas-label">Input</span>
+              <div class="canvas-wrap" id="input-wrap">
+                <canvas id="input" aria-label="Input canvas"></canvas>
+                <div class="empty-state" id="empty-state">
+                  <div>
+                    <h2>Drop in an image</h2>
+                    <p>Click to select a file or paste from the clipboard.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="canvas-panel">
+              <span class="canvas-label">Output</span>
+              <div class="canvas-wrap" id="output-wrap">
+                <canvas id="output" aria-label="Output canvas"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-hints">
+            <span>Input: drag to paint mask</span>
+            <span>Eraser: drag to remove</span>
+            <span>Output: live preview</span>
+          </div>
+        </div>
+      </main>
+
+      <div class="download-row">
+        <button type="button" id="download" class="download-btn" disabled>
+          Download output
+        </button>
+      </div>
+
+      <aside class="panel">
         <section class="control-group">
           <h3>Tool</h3>
           <div class="segmented" role="group" aria-label="Tool">
@@ -106,42 +135,6 @@
           <p class="hint">Mouse wheel zooms. Buttons are touch-friendly.</p>
         </section>
       </aside>
-
-      <div class="download-row">
-        <button type="button" id="download" class="download-btn" disabled>
-          Download output
-        </button>
-      </div>
-
-      <main class="stage">
-        <div class="canvas-shell">
-          <div class="canvas-grid">
-            <div class="canvas-panel">
-              <span class="canvas-label">Input</span>
-              <div class="canvas-wrap" id="input-wrap">
-                <canvas id="input" aria-label="Input canvas"></canvas>
-                <div class="empty-state" id="empty-state">
-                  <div>
-                    <h2>Drop in an image</h2>
-                    <p>Select a file or paste from the clipboard to begin.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="canvas-panel">
-              <span class="canvas-label">Output</span>
-              <div class="canvas-wrap" id="output-wrap">
-                <canvas id="output" aria-label="Output canvas"></canvas>
-              </div>
-            </div>
-          </div>
-          <div class="canvas-hints">
-            <span>Input: drag to paint mask</span>
-            <span>Eraser: drag to remove</span>
-            <span>Output: live preview</span>
-          </div>
-        </div>
-      </main>
     </div>
 
     <script src="app.js"></script>

@@ -32,7 +32,6 @@ body {
   padding: 28px 24px 32px;
   display: grid;
   grid-template-columns: 1fr;
-  grid-template-rows: auto auto auto 1fr;
   gap: 24px;
 }
 
@@ -75,8 +74,16 @@ h1 {
 }
 
 .panel {
-  display: grid;
+  display: none;
   gap: 18px;
+}
+
+.panel.is-open {
+  display: grid;
+}
+
+.file-hidden {
+  display: none;
 }
 
 .download-row {
