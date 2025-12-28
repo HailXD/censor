@@ -1,27 +1,130 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, user-scalable=no"
-        />
-        <title>Censor App</title>
-        <link rel="stylesheet" href="style.css" />
-    </head>
-    <body>
-        <div id="app-container">
-            <div id="canvas-container">
-                <canvas id="censor-canvas"></canvas>
-            </div>
-            <div id="controls">
-                <input type="file" id="image-loader" accept="image/*" />
-                <button id="add-rect-btn">Add Rectangle</button>
-                <button id="undo-btn">Undo</button>
-                <button id="redo-btn">Redo</button>
-                <button id="pixelate-btn">Pixelate</button>
-            </div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Censor Brush Studio</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div>
+          <p class="eyebrow">Censor Brush Studio</p>
+          <h1>Paint privacy fast.</h1>
+          <p class="subhead">
+            Brush or rectangle. Pixelate, blur, or blackout. Paste or pick an
+            image and get to work.
+          </p>
         </div>
-        <script src="script.js"></script>
-    </body>
+        <div class="status-pill" id="status">Ready</div>
+      </header>
+
+      <aside class="panel">
+        <section class="control-group">
+          <h3>Image</h3>
+          <label class="file-input">
+            <input type="file" id="file-input" accept="image/*" />
+            <span>Select image</span>
+          </label>
+          <p class="hint">Paste with Ctrl+V / Cmd+V or long-press to paste.</p>
+        </section>
+
+        <section class="control-group">
+          <h3>Tool</h3>
+          <div class="segmented" role="group" aria-label="Tool">
+            <button type="button" data-tool="brush" class="is-active">
+              Brush
+            </button>
+            <button type="button" data-tool="rect">Rectangle</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h3>Brush</h3>
+          <div class="segmented" role="group" aria-label="Brush shape">
+            <button type="button" data-shape="round" class="is-active">
+              Round
+            </button>
+            <button type="button" data-shape="square">Square</button>
+          </div>
+          <div class="range-row">
+            <label for="brush-size">Size</label>
+            <div class="range-field">
+              <input type="range" id="brush-size" min="8" max="200" value="64" />
+              <output id="brush-size-value">64 px</output>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h3>Effect</h3>
+          <div class="segmented" role="group" aria-label="Effect">
+            <button type="button" data-effect="pixelate" class="is-active">
+              Pixelate
+            </button>
+            <button type="button" data-effect="black">Black</button>
+            <button type="button" data-effect="blur">Blur</button>
+          </div>
+          <div class="range-row" id="pixelate-controls">
+            <label for="pixelate-strength">Pixel strength</label>
+            <div class="range-field">
+              <input
+                type="range"
+                id="pixelate-strength"
+                min="2"
+                max="40"
+                value="10"
+              />
+              <output id="pixelate-strength-value">10</output>
+            </div>
+          </div>
+          <div class="range-row" id="blur-controls" hidden>
+            <label for="blur-strength">Blur strength</label>
+            <div class="range-field">
+              <input type="range" id="blur-strength" min="1" max="20" value="8" />
+              <output id="blur-strength-value">8</output>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h3>History</h3>
+          <button type="button" id="undo" class="ghost" disabled>
+            Undo (Ctrl+Z)
+          </button>
+        </section>
+
+        <section class="control-group">
+          <h3>Zoom</h3>
+          <div class="zoom-controls">
+            <button type="button" id="zoom-out">-</button>
+            <button type="button" id="zoom-in">+</button>
+            <button type="button" id="zoom-fit" class="ghost">Fit</button>
+          </div>
+          <p class="hint">Mouse wheel zooms. Buttons are touch-friendly.</p>
+        </section>
+      </aside>
+
+      <main class="stage">
+        <div class="canvas-shell">
+          <div class="canvas-wrap" id="canvas-wrap">
+            <canvas id="display" aria-label="Censor canvas"></canvas>
+            <div class="empty-state" id="empty-state">
+              <div>
+                <h2>Drop in an image</h2>
+                <p>Select a file or paste from the clipboard to begin.</p>
+              </div>
+            </div>
+          </div>
+          <div class="canvas-hints">
+            <span>Brush: drag to paint</span>
+            <span>Rectangle: drag to box</span>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
 </html>
