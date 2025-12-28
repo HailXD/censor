@@ -55,6 +55,11 @@ const state = {
   scale: 1,
   offsetX: 0,
   offsetY: 0,
+  isPanning: false,
+  panStartX: 0,
+  panStartY: 0,
+  panOffsetX: 0,
+  panOffsetY: 0,
   isDrawing: false,
   startX: 0,
   startY: 0,
@@ -537,6 +542,7 @@ const startStroke = (event) => {
 
 const continueStroke = (event) => {
   if (!hasImage) return;
+  if (state.isPanning) return;
   const { x, y } = displayToImage(event.clientX, event.clientY);
   state.hoverX = x;
   state.hoverY = y;
@@ -582,11 +588,64 @@ const handlePointerLeave = () => {
   }
 };
 
+const startPan = (event) => {
+  if (!hasImage) return;
+  if (event.pointerType !== "mouse" || event.button !== 1) return;
+  event.preventDefault();
+  state.isPanning = true;
+  state.isHovering = false;
+  state.panStartX = event.clientX;
+  state.panStartY = event.clientY;
+  state.panOffsetX = state.offsetX;
+  state.panOffsetY = state.offsetY;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  inputWrap.classList.add("is-panning");
+  outputWrap.classList.add("is-panning");
+};
+
+const continuePan = (event) => {
+  if (!state.isPanning) return;
+  const dx = event.clientX - state.panStartX;
+  const dy = event.clientY - state.panStartY;
+  state.offsetX = state.panOffsetX + dx;
+  state.offsetY = state.panOffsetY + dy;
+  scheduleRender();
+};
+
+const endPan = (event) => {
+  if (!state.isPanning) return;
+  state.isPanning = false;
+  if (
+    event?.pointerId !== undefined &&
+    event.currentTarget.hasPointerCapture(event.pointerId)
+  ) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  inputWrap.classList.remove("is-panning");
+  outputWrap.classList.remove("is-panning");
+  scheduleRender();
+};
+
+const blockAuxClick = (event) => {
+  if (event.button === 1) {
+    event.preventDefault();
+  }
+};
+
 inputCanvas.addEventListener("pointerdown", startStroke);
 inputCanvas.addEventListener("pointermove", continueStroke);
 inputCanvas.addEventListener("pointerup", endStroke);
 inputCanvas.addEventListener("pointercancel", endStroke);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
+
+const panCanvases = [inputCanvas, outputCanvas];
+panCanvases.forEach((canvas) => {
+  canvas.addEventListener("pointerdown", startPan);
+  canvas.addEventListener("pointermove", continuePan);
+  canvas.addEventListener("pointerup", endPan);
+  canvas.addEventListener("pointercancel", endPan);
+  canvas.addEventListener("auxclick", blockAuxClick);
+});
 
 const handleWheel = (event, canvas) => {
   if (!hasImage) return;

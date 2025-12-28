@@ -242,6 +242,11 @@ canvas {
   touch-action: none;
 }
 
+.canvas-wrap.is-panning,
+.canvas-wrap.is-panning canvas {
+  cursor: grabbing;
+}
+
 .empty-state {
   position: absolute;
   inset: 0;
