@@ -251,14 +251,14 @@ const composePreviewMask = () => {
   previewMaskCtx.clearRect(0, 0, previewMaskCanvas.width, previewMaskCanvas.height);
   previewMaskCtx.drawImage(maskCanvas, 0, 0);
   previewMaskCtx.globalCompositeOperation =
-    state.tool === "eraser" ? "destination-out" : "xor";
+    state.tool === "eraser" ? "destination-out" : "source-over";
   previewMaskCtx.drawImage(strokeCanvas, 0, 0);
   previewMaskCtx.globalCompositeOperation = "source-over";
 };
 
 const commitStroke = () => {
   maskCtx.globalCompositeOperation =
-    state.tool === "eraser" ? "destination-out" : "xor";
+    state.tool === "eraser" ? "destination-out" : "source-over";
   maskCtx.drawImage(strokeCanvas, 0, 0);
   maskCtx.globalCompositeOperation = "source-over";
 };
@@ -682,6 +682,26 @@ window.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && key === "z") {
     event.preventDefault();
     undo();
+    return;
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  if (key === "e") {
+    state.tool = "eraser";
+    updateToolUI();
+    scheduleRender();
+    return;
+  }
+  if (key === "w") {
+    state.tool = "rect";
+    updateToolUI();
+    scheduleRender();
+    return;
+  }
+  if (key === "q") {
+    state.effect = "pixelate";
+    updateEffectUI();
+    rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+    scheduleRender();
   }
 });
 
