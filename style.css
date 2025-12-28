@@ -200,6 +200,24 @@ output {
   height: 100%;
 }
 
+.canvas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.canvas-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.canvas-label {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.7rem;
+  color: var(--accent-2);
+}
+
 .canvas-wrap {
   position: relative;
   border-radius: 18px;

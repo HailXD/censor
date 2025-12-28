@@ -1,6 +1,9 @@
-const displayCanvas = document.getElementById("display");
-const displayCtx = displayCanvas.getContext("2d");
-const canvasWrap = document.getElementById("canvas-wrap");
+const inputCanvas = document.getElementById("input");
+const outputCanvas = document.getElementById("output");
+const inputCtx = inputCanvas.getContext("2d");
+const outputCtx = outputCanvas.getContext("2d");
+const inputWrap = document.getElementById("input-wrap");
+const outputWrap = document.getElementById("output-wrap");
 const emptyState = document.getElementById("empty-state");
 const statusPill = document.getElementById("status");
 
@@ -24,10 +27,23 @@ const zoomFitButton = document.getElementById("zoom-fit");
 
 const sourceCanvas = document.createElement("canvas");
 const sourceCtx = sourceCanvas.getContext("2d");
-const snapshotCanvas = document.createElement("canvas");
-const snapshotCtx = snapshotCanvas.getContext("2d");
+const maskCanvas = document.createElement("canvas");
+const maskCtx = maskCanvas.getContext("2d");
+const previewMaskCanvas = document.createElement("canvas");
+const previewMaskCtx = previewMaskCanvas.getContext("2d");
+const strokeCanvas = document.createElement("canvas");
+const strokeCtx = strokeCanvas.getContext("2d");
+const overlayCanvas = document.createElement("canvas");
+const overlayCtx = overlayCanvas.getContext("2d");
+const censoredCanvas = document.createElement("canvas");
+const censoredCtx = censoredCanvas.getContext("2d");
+const effectCanvas = document.createElement("canvas");
+const effectCtx = effectCanvas.getContext("2d");
 const pixelCanvas = document.createElement("canvas");
 const pixelCtx = pixelCanvas.getContext("2d");
+
+const MASK_TINT = "rgba(36, 161, 94, 0.4)";
+const OUTLINE_COLOR = "rgba(242, 107, 58, 0.9)";
 
 const state = {
   tool: "brush",
@@ -44,6 +60,9 @@ const state = {
   startY: 0,
   lastX: 0,
   lastY: 0,
+  hoverX: 0,
+  hoverY: 0,
+  isHovering: false,
   history: [],
   historyLimit: 30,
   dpr: window.devicePixelRatio || 1,
@@ -64,11 +83,11 @@ const updateUndoState = () => {
 
 const pushHistory = () => {
   if (!hasImage) return;
-  const snapshot = sourceCtx.getImageData(
+  const snapshot = maskCtx.getImageData(
     0,
     0,
-    sourceCanvas.width,
-    sourceCanvas.height
+    maskCanvas.width,
+    maskCanvas.height
   );
   state.history.push(snapshot);
   if (state.history.length > state.historyLimit) {
@@ -78,10 +97,11 @@ const pushHistory = () => {
 };
 
 const undo = () => {
-  if (!state.history.length) return;
+  if (!state.history.length || state.isDrawing) return;
   const previous = state.history.pop();
-  sourceCtx.putImageData(previous, 0, 0);
+  maskCtx.putImageData(previous, 0, 0);
   updateUndoState();
+  refreshDerivedCanvases();
   scheduleRender();
 };
 
@@ -117,13 +137,18 @@ const updateShapeUI = () => {
   });
 };
 
+const resizeCanvasToWrap = (canvas, wrap) => {
+  const rect = wrap.getBoundingClientRect();
+  canvas.width = Math.max(1, Math.floor(rect.width * state.dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * state.dpr));
+  canvas.style.width = `${rect.width}px`;
+  canvas.style.height = `${rect.height}px`;
+};
+
 const resizeDisplay = () => {
-  const rect = canvasWrap.getBoundingClientRect();
   state.dpr = window.devicePixelRatio || 1;
-  displayCanvas.width = Math.max(1, Math.floor(rect.width * state.dpr));
-  displayCanvas.height = Math.max(1, Math.floor(rect.height * state.dpr));
-  displayCanvas.style.width = `${rect.width}px`;
-  displayCanvas.style.height = `${rect.height}px`;
+  resizeCanvasToWrap(inputCanvas, inputWrap);
+  resizeCanvasToWrap(outputCanvas, outputWrap);
   if (hasImage) {
     fitToView();
   }
@@ -132,7 +157,7 @@ const resizeDisplay = () => {
 
 const fitToView = () => {
   if (!hasImage) return;
-  const rect = canvasWrap.getBoundingClientRect();
+  const rect = inputWrap.getBoundingClientRect();
   const scale = Math.min(
     rect.width / sourceCanvas.width,
     rect.height / sourceCanvas.height
@@ -147,50 +172,13 @@ const scheduleRender = () => {
   rafId = requestAnimationFrame(render);
 };
 
-const render = () => {
-  rafId = 0;
-  const width = displayCanvas.width / state.dpr;
-  const height = displayCanvas.height / state.dpr;
-  displayCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-  displayCtx.clearRect(0, 0, width, height);
-  if (!hasImage) return;
-
-  displayCtx.save();
-  displayCtx.setTransform(
-    state.dpr * state.scale,
-    0,
-    0,
-    state.dpr * state.scale,
-    state.dpr * state.offsetX,
-    state.dpr * state.offsetY
-  );
-  displayCtx.imageSmoothingEnabled = true;
-  displayCtx.drawImage(sourceCanvas, 0, 0);
-  displayCtx.restore();
-
-  if (state.isDrawing && state.tool === "rect") {
-    const start = imageToDisplay(state.startX, state.startY);
-    const end = imageToDisplay(state.lastX, state.lastY);
-    const x = Math.min(start.x, end.x);
-    const y = Math.min(start.y, end.y);
-    const w = Math.abs(start.x - end.x);
-    const h = Math.abs(start.y - end.y);
-    displayCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-    displayCtx.strokeStyle = "rgba(242, 107, 58, 0.85)";
-    displayCtx.lineWidth = 2;
-    displayCtx.setLineDash([8, 6]);
-    displayCtx.strokeRect(x, y, w, h);
-    displayCtx.setLineDash([]);
-  }
-};
-
 const imageToDisplay = (x, y) => ({
   x: x * state.scale + state.offsetX,
   y: y * state.scale + state.offsetY,
 });
 
 const displayToImage = (clientX, clientY) => {
-  const rect = displayCanvas.getBoundingClientRect();
+  const rect = inputCanvas.getBoundingClientRect();
   const x = (clientX - rect.left - state.offsetX) / state.scale;
   const y = (clientY - rect.top - state.offsetY) / state.scale;
   return {
@@ -216,93 +204,24 @@ const normalizeRect = (x1, y1, x2, y2) => {
   };
 };
 
-const clipBrush = (ctx, x, y, size) => {
-  ctx.beginPath();
-  if (state.shape === "round") {
-    ctx.arc(x, y, size / 2, 0, Math.PI * 2);
-  } else {
-    ctx.rect(x - size / 2, y - size / 2, size, size);
-  }
-  ctx.clip();
+const resetStroke = () => {
+  strokeCtx.setTransform(1, 0, 0, 1, 0, 0);
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  strokeCtx.fillStyle = "#fff";
 };
 
-const applyEffect = (rect, clipFn) => {
-  if (rect.w <= 0 || rect.h <= 0) return;
-  if (state.effect === "black") {
-    sourceCtx.save();
-    clipFn(sourceCtx);
-    sourceCtx.fillStyle = "#000";
-    sourceCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    sourceCtx.restore();
-    return;
-  }
-
-  if (state.effect === "blur") {
-    sourceCtx.save();
-    clipFn(sourceCtx);
-    sourceCtx.filter = `blur(${state.blurStrength}px)`;
-    sourceCtx.drawImage(
-      snapshotCanvas,
-      rect.x,
-      rect.y,
-      rect.w,
-      rect.h,
-      rect.x,
-      rect.y,
-      rect.w,
-      rect.h
-    );
-    sourceCtx.restore();
-    return;
-  }
-
-  const strength = clamp(state.pixelStrength, 1, 60);
-  const scaledW = Math.max(1, Math.floor(rect.w / strength));
-  const scaledH = Math.max(1, Math.floor(rect.h / strength));
-  pixelCanvas.width = scaledW;
-  pixelCanvas.height = scaledH;
-  pixelCtx.imageSmoothingEnabled = true;
-  pixelCtx.clearRect(0, 0, scaledW, scaledH);
-  pixelCtx.drawImage(
-    snapshotCanvas,
-    rect.x,
-    rect.y,
-    rect.w,
-    rect.h,
-    0,
-    0,
-    scaledW,
-    scaledH
-  );
-  sourceCtx.save();
-  clipFn(sourceCtx);
-  sourceCtx.imageSmoothingEnabled = false;
-  sourceCtx.drawImage(
-    pixelCanvas,
-    0,
-    0,
-    scaledW,
-    scaledH,
-    rect.x,
-    rect.y,
-    rect.w,
-    rect.h
-  );
-  sourceCtx.restore();
-};
-
-const applyBrushAtPoint = (x, y) => {
+const drawBrushStamp = (x, y) => {
   const size = state.brushSize;
-  const rect = normalizeRect(
-    x - size / 2,
-    y - size / 2,
-    x + size / 2,
-    y + size / 2
-  );
-  applyEffect(rect, (ctx) => clipBrush(ctx, x, y, size));
+  strokeCtx.beginPath();
+  if (state.shape === "round") {
+    strokeCtx.arc(x, y, size / 2, 0, Math.PI * 2);
+  } else {
+    strokeCtx.rect(x - size / 2, y - size / 2, size, size);
+  }
+  strokeCtx.fill();
 };
 
-const applyBrushLine = (x1, y1, x2, y2) => {
+const drawBrushLine = (x1, y1, x2, y2) => {
   const distance = Math.hypot(x2 - x1, y2 - y1);
   const step = Math.max(2, state.brushSize / 4);
   const steps = Math.max(1, Math.ceil(distance / step));
@@ -310,62 +229,191 @@ const applyBrushLine = (x1, y1, x2, y2) => {
     const t = steps === 0 ? 0 : i / steps;
     const x = x1 + (x2 - x1) * t;
     const y = y1 + (y2 - y1) * t;
-    applyBrushAtPoint(x, y);
+    drawBrushStamp(x, y);
   }
 };
 
-const applyRectangle = (x1, y1, x2, y2) => {
+const drawRectStroke = (x1, y1, x2, y2) => {
   const rect = normalizeRect(x1, y1, x2, y2);
-  applyEffect(rect, (ctx) => {
-    ctx.beginPath();
-    ctx.rect(rect.x, rect.y, rect.w, rect.h);
-    ctx.clip();
-  });
+  strokeCtx.setTransform(1, 0, 0, 1, 0, 0);
+  strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
+  strokeCtx.fillStyle = "#fff";
+  strokeCtx.fillRect(rect.x, rect.y, rect.w, rect.h);
 };
 
-const startStroke = (event) => {
-  if (!hasImage) {
-    setStatus("Load an image first.");
-    return;
-  }
-  if (event.pointerType === "mouse" && event.button !== 0) return;
-  displayCanvas.setPointerCapture(event.pointerId);
-  const { x, y } = displayToImage(event.clientX, event.clientY);
-  state.isDrawing = true;
-  state.startX = x;
-  state.startY = y;
-  state.lastX = x;
-  state.lastY = y;
-  pushHistory();
-  snapshotCtx.clearRect(0, 0, snapshotCanvas.width, snapshotCanvas.height);
-  snapshotCtx.drawImage(sourceCanvas, 0, 0);
-  if (state.tool === "brush") {
-    applyBrushAtPoint(x, y);
-    scheduleRender();
-  }
+const composePreviewMask = () => {
+  previewMaskCtx.setTransform(1, 0, 0, 1, 0, 0);
+  previewMaskCtx.clearRect(0, 0, previewMaskCanvas.width, previewMaskCanvas.height);
+  previewMaskCtx.drawImage(maskCanvas, 0, 0);
+  previewMaskCtx.globalCompositeOperation =
+    state.tool === "eraser" ? "destination-out" : "xor";
+  previewMaskCtx.drawImage(strokeCanvas, 0, 0);
+  previewMaskCtx.globalCompositeOperation = "source-over";
 };
 
-const continueStroke = (event) => {
-  if (!state.isDrawing) return;
-  const { x, y } = displayToImage(event.clientX, event.clientY);
-  if (state.tool === "brush") {
-    applyBrushLine(state.lastX, state.lastY, x, y);
-    state.lastX = x;
-    state.lastY = y;
+const commitStroke = () => {
+  maskCtx.globalCompositeOperation =
+    state.tool === "eraser" ? "destination-out" : "xor";
+  maskCtx.drawImage(strokeCanvas, 0, 0);
+  maskCtx.globalCompositeOperation = "source-over";
+};
+
+const rebuildOverlay = (mask) => {
+  overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if (!mask) return;
+  overlayCtx.fillStyle = MASK_TINT;
+  overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  overlayCtx.globalCompositeOperation = "destination-in";
+  overlayCtx.drawImage(mask, 0, 0);
+  overlayCtx.globalCompositeOperation = "source-over";
+};
+
+const rebuildOutput = (mask) => {
+  if (!hasImage) return;
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+
+  censoredCtx.setTransform(1, 0, 0, 1, 0, 0);
+  censoredCtx.clearRect(0, 0, width, height);
+  censoredCtx.drawImage(sourceCanvas, 0, 0);
+
+  if (!mask) return;
+
+  effectCtx.setTransform(1, 0, 0, 1, 0, 0);
+  effectCtx.clearRect(0, 0, width, height);
+  effectCtx.globalCompositeOperation = "source-over";
+  effectCtx.filter = "none";
+  effectCtx.imageSmoothingEnabled = true;
+
+  if (state.effect === "black") {
+    effectCtx.fillStyle = "#000";
+    effectCtx.fillRect(0, 0, width, height);
+  } else if (state.effect === "blur") {
+    effectCtx.filter = `blur(${state.blurStrength}px)`;
+    effectCtx.drawImage(sourceCanvas, 0, 0);
+    effectCtx.filter = "none";
   } else {
-    state.lastX = x;
-    state.lastY = y;
+    const strength = clamp(state.pixelStrength, 1, 60);
+    const scaledW = Math.max(1, Math.floor(width / strength));
+    const scaledH = Math.max(1, Math.floor(height / strength));
+    pixelCanvas.width = scaledW;
+    pixelCanvas.height = scaledH;
+    pixelCtx.setTransform(1, 0, 0, 1, 0, 0);
+    pixelCtx.imageSmoothingEnabled = true;
+    pixelCtx.clearRect(0, 0, scaledW, scaledH);
+    pixelCtx.drawImage(sourceCanvas, 0, 0, scaledW, scaledH);
+    effectCtx.imageSmoothingEnabled = false;
+    effectCtx.drawImage(
+      pixelCanvas,
+      0,
+      0,
+      scaledW,
+      scaledH,
+      0,
+      0,
+      width,
+      height
+    );
+    effectCtx.imageSmoothingEnabled = true;
   }
-  scheduleRender();
+
+  effectCtx.globalCompositeOperation = "destination-in";
+  effectCtx.drawImage(mask, 0, 0);
+  effectCtx.globalCompositeOperation = "source-over";
+
+  censoredCtx.drawImage(effectCanvas, 0, 0);
 };
 
-const endStroke = () => {
-  if (!state.isDrawing) return;
-  if (state.tool === "rect") {
-    applyRectangle(state.startX, state.startY, state.lastX, state.lastY);
+const refreshDerivedCanvases = () => {
+  if (!hasImage) return;
+  const mask = state.isDrawing ? previewMaskCanvas : maskCanvas;
+  rebuildOverlay(mask);
+  rebuildOutput(mask);
+};
+
+const drawBrushOutline = () => {
+  if (!hasImage || !state.isHovering) return;
+  if (state.tool !== "brush" && state.tool !== "eraser") return;
+  const pos = imageToDisplay(state.hoverX, state.hoverY);
+  const size = state.brushSize * state.scale;
+
+  inputCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  inputCtx.strokeStyle = OUTLINE_COLOR;
+  inputCtx.lineWidth = 1.5;
+  inputCtx.beginPath();
+  if (state.shape === "round") {
+    inputCtx.arc(pos.x, pos.y, size / 2, 0, Math.PI * 2);
+  } else {
+    inputCtx.rect(pos.x - size / 2, pos.y - size / 2, size, size);
   }
-  state.isDrawing = false;
-  scheduleRender();
+  inputCtx.stroke();
+};
+
+const renderInput = () => {
+  const width = inputCanvas.width / state.dpr;
+  const height = inputCanvas.height / state.dpr;
+  inputCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  inputCtx.clearRect(0, 0, width, height);
+  if (!hasImage) return;
+
+  inputCtx.save();
+  inputCtx.setTransform(
+    state.dpr * state.scale,
+    0,
+    0,
+    state.dpr * state.scale,
+    state.dpr * state.offsetX,
+    state.dpr * state.offsetY
+  );
+  inputCtx.imageSmoothingEnabled = true;
+  inputCtx.drawImage(sourceCanvas, 0, 0);
+  inputCtx.drawImage(overlayCanvas, 0, 0);
+  inputCtx.restore();
+
+  if (state.isDrawing && state.tool === "rect") {
+    const start = imageToDisplay(state.startX, state.startY);
+    const end = imageToDisplay(state.lastX, state.lastY);
+    const x = Math.min(start.x, end.x);
+    const y = Math.min(start.y, end.y);
+    const w = Math.abs(start.x - end.x);
+    const h = Math.abs(start.y - end.y);
+    inputCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    inputCtx.strokeStyle = OUTLINE_COLOR;
+    inputCtx.lineWidth = 2;
+    inputCtx.setLineDash([8, 6]);
+    inputCtx.strokeRect(x, y, w, h);
+    inputCtx.setLineDash([]);
+  }
+
+  drawBrushOutline();
+};
+
+const renderOutput = () => {
+  const width = outputCanvas.width / state.dpr;
+  const height = outputCanvas.height / state.dpr;
+  outputCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  outputCtx.clearRect(0, 0, width, height);
+  if (!hasImage) return;
+
+  outputCtx.save();
+  outputCtx.setTransform(
+    state.dpr * state.scale,
+    0,
+    0,
+    state.dpr * state.scale,
+    state.dpr * state.offsetX,
+    state.dpr * state.offsetY
+  );
+  outputCtx.imageSmoothingEnabled = true;
+  outputCtx.drawImage(censoredCanvas, 0, 0);
+  outputCtx.restore();
+};
+
+const render = () => {
+  rafId = 0;
+  renderInput();
+  renderOutput();
 };
 
 const zoomAt = (mx, my, zoom) => {
@@ -381,7 +429,7 @@ const zoomAt = (mx, my, zoom) => {
 };
 
 const zoomBy = (factor) => {
-  const rect = displayCanvas.getBoundingClientRect();
+  const rect = inputCanvas.getBoundingClientRect();
   zoomAt(rect.width / 2, rect.height / 2, factor);
 };
 
@@ -392,16 +440,42 @@ const loadImage = (file) => {
   image.onload = () => {
     sourceCanvas.width = image.naturalWidth;
     sourceCanvas.height = image.naturalHeight;
-    snapshotCanvas.width = image.naturalWidth;
-    snapshotCanvas.height = image.naturalHeight;
+    maskCanvas.width = image.naturalWidth;
+    maskCanvas.height = image.naturalHeight;
+    previewMaskCanvas.width = image.naturalWidth;
+    previewMaskCanvas.height = image.naturalHeight;
+    strokeCanvas.width = image.naturalWidth;
+    strokeCanvas.height = image.naturalHeight;
+    overlayCanvas.width = image.naturalWidth;
+    overlayCanvas.height = image.naturalHeight;
+    censoredCanvas.width = image.naturalWidth;
+    censoredCanvas.height = image.naturalHeight;
+    effectCanvas.width = image.naturalWidth;
+    effectCanvas.height = image.naturalHeight;
+
     sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
     sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
     sourceCtx.drawImage(image, 0, 0);
+
+    maskCtx.setTransform(1, 0, 0, 1, 0, 0);
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    previewMaskCtx.setTransform(1, 0, 0, 1, 0, 0);
+    previewMaskCtx.clearRect(
+      0,
+      0,
+      previewMaskCanvas.width,
+      previewMaskCanvas.height
+    );
+    resetStroke();
+
     hasImage = true;
     emptyState.hidden = true;
     state.history = [];
+    state.isDrawing = false;
+    state.isHovering = false;
     updateUndoState();
     fitToView();
+    refreshDerivedCanvases();
     scheduleRender();
     setStatus(`Loaded ${file.name || "image"}.`);
     URL.revokeObjectURL(url);
@@ -433,23 +507,105 @@ document.addEventListener("paste", (event) => {
   }
 });
 
-displayCanvas.addEventListener("pointerdown", startStroke);
-displayCanvas.addEventListener("pointermove", continueStroke);
-displayCanvas.addEventListener("pointerup", endStroke);
-displayCanvas.addEventListener("pointercancel", endStroke);
-displayCanvas.addEventListener("pointerleave", endStroke);
+const startStroke = (event) => {
+  if (!hasImage) {
+    setStatus("Load an image first.");
+    return;
+  }
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  inputCanvas.setPointerCapture(event.pointerId);
+  const { x, y } = displayToImage(event.clientX, event.clientY);
+  state.isDrawing = true;
+  state.startX = x;
+  state.startY = y;
+  state.lastX = x;
+  state.lastY = y;
+  state.hoverX = x;
+  state.hoverY = y;
+  state.isHovering = true;
+  pushHistory();
+  resetStroke();
+  if (state.tool === "rect") {
+    drawRectStroke(x, y, x, y);
+  } else {
+    drawBrushStamp(x, y);
+  }
+  composePreviewMask();
+  refreshDerivedCanvases();
+  scheduleRender();
+};
 
-displayCanvas.addEventListener(
+const continueStroke = (event) => {
+  if (!hasImage) return;
+  const { x, y } = displayToImage(event.clientX, event.clientY);
+  state.hoverX = x;
+  state.hoverY = y;
+  state.isHovering = true;
+
+  if (!state.isDrawing) {
+    scheduleRender();
+    return;
+  }
+
+  if (state.tool === "rect") {
+    state.lastX = x;
+    state.lastY = y;
+    drawRectStroke(state.startX, state.startY, state.lastX, state.lastY);
+  } else {
+    drawBrushLine(state.lastX, state.lastY, x, y);
+    state.lastX = x;
+    state.lastY = y;
+  }
+
+  composePreviewMask();
+  refreshDerivedCanvases();
+  scheduleRender();
+};
+
+const endStroke = (event) => {
+  if (state.isDrawing) {
+    commitStroke();
+    state.isDrawing = false;
+    resetStroke();
+    refreshDerivedCanvases();
+    scheduleRender();
+  }
+  if (event?.pointerId !== undefined) {
+    inputCanvas.releasePointerCapture(event.pointerId);
+  }
+};
+
+const handlePointerLeave = () => {
+  state.isHovering = false;
+  if (!state.isDrawing) {
+    scheduleRender();
+  }
+};
+
+inputCanvas.addEventListener("pointerdown", startStroke);
+inputCanvas.addEventListener("pointermove", continueStroke);
+inputCanvas.addEventListener("pointerup", endStroke);
+inputCanvas.addEventListener("pointercancel", endStroke);
+inputCanvas.addEventListener("pointerleave", handlePointerLeave);
+
+const handleWheel = (event, canvas) => {
+  if (!hasImage) return;
+  event.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const mx = event.clientX - rect.left;
+  const my = event.clientY - rect.top;
+  const zoom = event.deltaY < 0 ? 1.1 : 0.9;
+  zoomAt(mx, my, zoom);
+};
+
+inputCanvas.addEventListener(
   "wheel",
-  (event) => {
-    if (!hasImage) return;
-    event.preventDefault();
-    const rect = displayCanvas.getBoundingClientRect();
-    const mx = event.clientX - rect.left;
-    const my = event.clientY - rect.top;
-    const zoom = event.deltaY < 0 ? 1.1 : 0.9;
-    zoomAt(mx, my, zoom);
-  },
+  (event) => handleWheel(event, inputCanvas),
+  { passive: false }
+);
+outputCanvas.addEventListener(
+  "wheel",
+  (event) => handleWheel(event, outputCanvas),
   { passive: false }
 );
 
@@ -474,6 +630,7 @@ document.querySelectorAll("[data-tool]").forEach((button) => {
   button.addEventListener("click", () => {
     state.tool = button.dataset.tool;
     updateToolUI();
+    scheduleRender();
   });
 });
 
@@ -481,6 +638,7 @@ document.querySelectorAll("[data-shape]").forEach((button) => {
   button.addEventListener("click", () => {
     state.shape = button.dataset.shape;
     updateShapeUI();
+    scheduleRender();
   });
 });
 
@@ -488,22 +646,29 @@ document.querySelectorAll("[data-effect]").forEach((button) => {
   button.addEventListener("click", () => {
     state.effect = button.dataset.effect;
     updateEffectUI();
+    rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+    scheduleRender();
   });
 });
 
 brushSizeInput.addEventListener("input", (event) => {
   state.brushSize = Number(event.target.value);
   updateOutputs();
+  scheduleRender();
 });
 
 pixelateStrengthInput.addEventListener("input", (event) => {
   state.pixelStrength = Number(event.target.value);
   updateOutputs();
+  rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+  scheduleRender();
 });
 
 blurStrengthInput.addEventListener("input", (event) => {
   state.blurStrength = Number(event.target.value);
   updateOutputs();
+  rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+  scheduleRender();
 });
 
 window.addEventListener("resize", resizeDisplay);

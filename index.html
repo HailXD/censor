@@ -37,6 +37,7 @@
               Brush
             </button>
             <button type="button" data-tool="rect">Rectangle</button>
+            <button type="button" data-tool="eraser">Eraser</button>
           </div>
         </section>
 
@@ -108,18 +109,30 @@
 
       <main class="stage">
         <div class="canvas-shell">
-          <div class="canvas-wrap" id="canvas-wrap">
-            <canvas id="display" aria-label="Censor canvas"></canvas>
-            <div class="empty-state" id="empty-state">
-              <div>
-                <h2>Drop in an image</h2>
-                <p>Select a file or paste from the clipboard to begin.</p>
+          <div class="canvas-grid">
+            <div class="canvas-panel">
+              <span class="canvas-label">Input</span>
+              <div class="canvas-wrap" id="input-wrap">
+                <canvas id="input" aria-label="Input canvas"></canvas>
+                <div class="empty-state" id="empty-state">
+                  <div>
+                    <h2>Drop in an image</h2>
+                    <p>Select a file or paste from the clipboard to begin.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="canvas-panel">
+              <span class="canvas-label">Output</span>
+              <div class="canvas-wrap" id="output-wrap">
+                <canvas id="output" aria-label="Output canvas"></canvas>
               </div>
             </div>
           </div>
           <div class="canvas-hints">
-            <span>Brush: drag to paint</span>
-            <span>Rectangle: drag to box</span>
+            <span>Input: drag to toggle mask</span>
+            <span>Eraser: drag to remove</span>
+            <span>Output: live preview</span>
           </div>
         </div>
       </main>
