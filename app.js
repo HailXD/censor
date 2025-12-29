@@ -79,6 +79,17 @@ const state = {
 let hasImage = false;
 let rafId = 0;
 
+const touchState = {
+  activePointers: new Map(),
+  isGesturing: false,
+  ignoreDrawing: false,
+  drawingPointerId: null,
+  gestureStartDistance: 0,
+  gestureStartScale: 1,
+  gestureWorldX: 0,
+  gestureWorldY: 0,
+};
+
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
 const setStatus = (message) => {
@@ -197,6 +208,46 @@ const displayToImage = (clientX, clientY) => {
     x: clamp(x, 0, sourceCanvas.width),
     y: clamp(y, 0, sourceCanvas.height),
   };
+};
+
+const getTouchPoints = (canvas) => {
+  const rect = canvas.getBoundingClientRect();
+  return Array.from(touchState.activePointers.values())
+    .slice(0, 2)
+    .map((point) => ({
+      x: point.clientX - rect.left,
+      y: point.clientY - rect.top,
+    }));
+};
+
+const startTouchGesture = (canvas) => {
+  const points = getTouchPoints(canvas);
+  if (points.length < 2 || !hasImage) return;
+  const [p1, p2] = points;
+  const centerX = (p1.x + p2.x) / 2;
+  const centerY = (p1.y + p2.y) / 2;
+  const distance = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+  touchState.isGesturing = true;
+  touchState.gestureStartDistance = distance;
+  touchState.gestureStartScale = state.scale;
+  touchState.gestureWorldX = (centerX - state.offsetX) / state.scale;
+  touchState.gestureWorldY = (centerY - state.offsetY) / state.scale;
+};
+
+const updateTouchGesture = (canvas) => {
+  if (!touchState.isGesturing) return;
+  const points = getTouchPoints(canvas);
+  if (points.length < 2) return;
+  const [p1, p2] = points;
+  const centerX = (p1.x + p2.x) / 2;
+  const centerY = (p1.y + p2.y) / 2;
+  const distance = Math.max(1, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+  const zoom = distance / touchState.gestureStartDistance;
+  const nextScale = clamp(touchState.gestureStartScale * zoom, 0.1, 8);
+  state.scale = nextScale;
+  state.offsetX = centerX - touchState.gestureWorldX * nextScale;
+  state.offsetY = centerY - touchState.gestureWorldY * nextScale;
+  scheduleRender();
 };
 
 const normalizeRect = (x1, y1, x2, y2) => {
@@ -591,6 +642,19 @@ const endStroke = (event) => {
   }
 };
 
+const abortStroke = () => {
+  if (!state.isDrawing) return;
+  state.isDrawing = false;
+  state.isHovering = false;
+  resetStroke();
+  refreshDerivedCanvases();
+  scheduleRender();
+  if (state.history.length) {
+    state.history.pop();
+    updateUndoState();
+  }
+};
+
 const downloadOutput = () => {
   if (!hasImage) return;
   rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
@@ -675,10 +739,102 @@ const blockAuxClick = (event) => {
   }
 };
 
-inputCanvas.addEventListener("pointerdown", startStroke);
-inputCanvas.addEventListener("pointermove", continueStroke);
-inputCanvas.addEventListener("pointerup", endStroke);
-inputCanvas.addEventListener("pointercancel", endStroke);
+const handlePointerDown = (event) => {
+  if (event.pointerType === "touch") {
+    event.preventDefault();
+    inputCanvas.setPointerCapture(event.pointerId);
+    touchState.activePointers.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+    if (touchState.activePointers.size === 1 && !touchState.ignoreDrawing) {
+      touchState.drawingPointerId = event.pointerId;
+      startStroke(event);
+    } else {
+      if (state.isDrawing) {
+        abortStroke();
+      }
+      touchState.drawingPointerId = null;
+      touchState.ignoreDrawing = true;
+      if (touchState.activePointers.size >= 2) {
+        startTouchGesture(event.currentTarget);
+      }
+    }
+    return;
+  }
+
+  startStroke(event);
+};
+
+const handlePointerMove = (event) => {
+  if (event.pointerType === "touch") {
+    if (touchState.activePointers.has(event.pointerId)) {
+      touchState.activePointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    }
+    if (touchState.activePointers.size >= 2) {
+      if (!touchState.isGesturing) {
+        startTouchGesture(event.currentTarget);
+      }
+      updateTouchGesture(event.currentTarget);
+      return;
+    }
+    if (touchState.isGesturing) {
+      return;
+    }
+    if (touchState.ignoreDrawing) {
+      return;
+    }
+    if (touchState.drawingPointerId !== event.pointerId) {
+      return;
+    }
+    continueStroke(event);
+    return;
+  }
+
+  continueStroke(event);
+};
+
+const handlePointerUp = (event) => {
+  if (event.pointerType === "touch") {
+    if (touchState.activePointers.has(event.pointerId)) {
+      touchState.activePointers.delete(event.pointerId);
+    }
+    endStroke(event);
+    if (touchState.activePointers.size < 2) {
+      touchState.isGesturing = false;
+    }
+    if (touchState.activePointers.size === 0) {
+      touchState.ignoreDrawing = false;
+      touchState.drawingPointerId = null;
+    }
+    return;
+  }
+
+  endStroke(event);
+};
+
+const handlePointerCancel = (event) => {
+  if (event.pointerType === "touch") {
+    touchState.activePointers.delete(event.pointerId);
+    endStroke(event);
+    touchState.isGesturing = false;
+    if (touchState.activePointers.size === 0) {
+      touchState.ignoreDrawing = false;
+      touchState.drawingPointerId = null;
+    }
+    return;
+  }
+
+  endStroke(event);
+};
+
+inputCanvas.addEventListener("pointerdown", handlePointerDown);
+inputCanvas.addEventListener("pointermove", handlePointerMove);
+inputCanvas.addEventListener("pointerup", handlePointerUp);
+inputCanvas.addEventListener("pointercancel", handlePointerCancel);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
 inputWrap.addEventListener("click", handleInputClick);
 
