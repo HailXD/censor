@@ -47,9 +47,11 @@ const pixelCtx = pixelCanvas.getContext("2d");
 
 const MASK_TINT = "rgba(36, 161, 94, 0.4)";
 const OUTLINE_COLOR = "rgba(242, 107, 58, 0.9)";
+const FILL_ALPHA_TOLERANCE = 28;
 
 const state = {
   tool: "brush",
+  pointerTool: null,
   shape: "round",
   effect: "pixelate",
   brushSize: Number(brushSizeInput.value),
@@ -92,6 +94,16 @@ const touchState = {
 };
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const getPointerTool = (event) => {
+  if (event.pointerType === "mouse" && event.button === 2) {
+    return "eraser";
+  }
+  return state.tool;
+};
+
+const getActiveTool = () =>
+  state.isDrawing && state.pointerTool ? state.pointerTool : state.tool;
 
 const setStatus = (message) => {
   statusPill.textContent = message;
@@ -268,6 +280,57 @@ const normalizeRect = (x1, y1, x2, y2) => {
   };
 };
 
+const applyFill = (x, y, erase) => {
+  const width = maskCanvas.width;
+  const height = maskCanvas.height;
+  if (!width || !height) return;
+
+  const startX = clamp(Math.floor(x), 0, width - 1);
+  const startY = clamp(Math.floor(y), 0, height - 1);
+
+  const maskData = maskCtx.getImageData(0, 0, width, height);
+  const mask = maskData.data;
+  const startOffset = (startY * width + startX) * 4;
+  const targetAlpha = mask[startOffset + 3];
+
+  const visited = new Uint8Array(width * height);
+  const stack = [startY * width + startX];
+
+  while (stack.length) {
+    const index = stack.pop();
+    if (visited[index]) continue;
+    visited[index] = 1;
+    const offset = index * 4;
+    const alphaDiff = Math.abs(mask[offset + 3] - targetAlpha);
+    if (alphaDiff > FILL_ALPHA_TOLERANCE) {
+      continue;
+    }
+
+    if (erase) {
+      mask[offset] = 0;
+      mask[offset + 1] = 0;
+      mask[offset + 2] = 0;
+      mask[offset + 3] = 0;
+    } else {
+      mask[offset] = 255;
+      mask[offset + 1] = 255;
+      mask[offset + 2] = 255;
+      mask[offset + 3] = 255;
+    }
+
+    const pixelX = index % width;
+    const pixelY = (index / width) | 0;
+    if (pixelX > 0) stack.push(index - 1);
+    if (pixelX < width - 1) stack.push(index + 1);
+    if (pixelY > 0) stack.push(index - width);
+    if (pixelY < height - 1) stack.push(index + width);
+  }
+
+  maskCtx.putImageData(maskData, 0, 0);
+  refreshDerivedCanvases();
+  scheduleRender();
+};
+
 const resetStroke = () => {
   strokeCtx.setTransform(1, 0, 0, 1, 0, 0);
   strokeCtx.clearRect(0, 0, strokeCanvas.width, strokeCanvas.height);
@@ -309,15 +372,17 @@ const composePreviewMask = () => {
   previewMaskCtx.setTransform(1, 0, 0, 1, 0, 0);
   previewMaskCtx.clearRect(0, 0, previewMaskCanvas.width, previewMaskCanvas.height);
   previewMaskCtx.drawImage(maskCanvas, 0, 0);
+  const tool = getActiveTool();
   previewMaskCtx.globalCompositeOperation =
-    state.tool === "eraser" ? "destination-out" : "source-over";
+    tool === "eraser" ? "destination-out" : "source-over";
   previewMaskCtx.drawImage(strokeCanvas, 0, 0);
   previewMaskCtx.globalCompositeOperation = "source-over";
 };
 
 const commitStroke = () => {
+  const tool = state.pointerTool || state.tool;
   maskCtx.globalCompositeOperation =
-    state.tool === "eraser" ? "destination-out" : "source-over";
+    tool === "eraser" ? "destination-out" : "source-over";
   maskCtx.drawImage(strokeCanvas, 0, 0);
   maskCtx.globalCompositeOperation = "source-over";
 };
@@ -398,7 +463,8 @@ const refreshDerivedCanvases = () => {
 
 const drawBrushOutline = () => {
   if (!hasImage || !state.isHovering) return;
-  if (state.tool !== "brush" && state.tool !== "eraser") return;
+  const tool = getActiveTool();
+  if (tool !== "brush" && tool !== "eraser") return;
   const pos = imageToDisplay(state.hoverX, state.hoverY);
   const size = state.brushSize * state.scale;
 
@@ -435,7 +501,7 @@ const renderInput = () => {
   inputCtx.drawImage(overlayCanvas, 0, 0);
   inputCtx.restore();
 
-  if (state.isDrawing && state.tool === "rect") {
+  if (state.isDrawing && getActiveTool() === "rect") {
     const start = imageToDisplay(state.startX, state.startY);
     const end = imageToDisplay(state.lastX, state.lastY);
     const x = Math.min(start.x, end.x);
@@ -579,9 +645,23 @@ const startStroke = (event) => {
     setStatus("Load an image first.");
     return;
   }
-  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (
+    event.pointerType === "mouse" &&
+    event.button !== 0 &&
+    event.button !== 2
+  ) {
+    return;
+  }
   inputCanvas.setPointerCapture(event.pointerId);
   const { x, y } = displayToImage(event.clientX, event.clientY);
+  const tool = getPointerTool(event);
+  if (state.tool === "fill") {
+    pushHistory();
+    applyFill(x, y, tool === "eraser");
+    state.pointerTool = null;
+    return;
+  }
+  state.pointerTool = tool;
   state.isDrawing = true;
   state.startX = x;
   state.startY = y;
@@ -592,7 +672,7 @@ const startStroke = (event) => {
   state.isHovering = true;
   pushHistory();
   resetStroke();
-  if (state.tool === "rect") {
+  if (tool === "rect") {
     drawRectStroke(x, y, x, y);
   } else {
     drawBrushStamp(x, y);
@@ -615,7 +695,8 @@ const continueStroke = (event) => {
     return;
   }
 
-  if (state.tool === "rect") {
+  const tool = state.pointerTool || state.tool;
+  if (tool === "rect") {
     state.lastX = x;
     state.lastY = y;
     drawRectStroke(state.startX, state.startY, state.lastX, state.lastY);
@@ -638,6 +719,7 @@ const endStroke = (event) => {
     refreshDerivedCanvases();
     scheduleRender();
   }
+  state.pointerTool = null;
   if (event?.pointerId !== undefined) {
     inputCanvas.releasePointerCapture(event.pointerId);
   }
@@ -648,6 +730,7 @@ const abortStroke = () => {
   state.isDrawing = false;
   state.isHovering = false;
   resetStroke();
+  state.pointerTool = null;
   refreshDerivedCanvases();
   scheduleRender();
   if (state.history.length) {
@@ -868,6 +951,7 @@ inputCanvas.addEventListener("pointermove", handlePointerMove);
 inputCanvas.addEventListener("pointerup", handlePointerUp);
 inputCanvas.addEventListener("pointercancel", handlePointerCancel);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
+inputCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
 inputWrap.addEventListener("click", handleInputClick);
 inputWrap.addEventListener("touchstart", preventTouchScroll, { passive: false });
 inputWrap.addEventListener("touchmove", preventTouchScroll, { passive: false });
