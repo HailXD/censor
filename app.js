@@ -11,6 +11,7 @@ const panel = document.querySelector(".panel");
 const fileInput = document.getElementById("file-input");
 const undoButton = document.getElementById("undo");
 const downloadButton = document.getElementById("download");
+const metadataToggle = document.getElementById("strip-metadata");
 
 const brushSizeInput = document.getElementById("brush-size");
 const brushSizeValue = document.getElementById("brush-size-value");
@@ -655,12 +656,37 @@ const abortStroke = () => {
   }
 };
 
+const createExportCanvas = () => {
+  if (!metadataToggle?.checked) {
+    return censoredCanvas;
+  }
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = censoredCanvas.width;
+  exportCanvas.height = censoredCanvas.height;
+  const exportCtx = exportCanvas.getContext("2d");
+  exportCtx.drawImage(censoredCanvas, 0, 0);
+  const imageData = exportCtx.getImageData(
+    0,
+    0,
+    exportCanvas.width,
+    exportCanvas.height
+  );
+  const data = imageData.data;
+  // Clear alpha-channel LSBs to remove stealth metadata.
+  for (let i = 3; i < data.length; i += 4) {
+    data[i] &= 0xfe;
+  }
+  exportCtx.putImageData(imageData, 0, 0);
+  return exportCanvas;
+};
+
 const downloadOutput = () => {
   if (!hasImage) return;
   rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
   const baseName = state.fileName || "image";
   const fileName = `censored_${baseName}.png`;
-  censoredCanvas.toBlob((blob) => {
+  const exportCanvas = createExportCanvas();
+  exportCanvas.toBlob((blob) => {
     if (!blob) {
       setStatus("Could not export image.");
       return;
@@ -735,6 +761,12 @@ const endPan = (event) => {
 
 const blockAuxClick = (event) => {
   if (event.button === 1) {
+    event.preventDefault();
+  }
+};
+
+const preventTouchScroll = (event) => {
+  if (event.cancelable) {
     event.preventDefault();
   }
 };
@@ -837,6 +869,10 @@ inputCanvas.addEventListener("pointerup", handlePointerUp);
 inputCanvas.addEventListener("pointercancel", handlePointerCancel);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
 inputWrap.addEventListener("click", handleInputClick);
+inputWrap.addEventListener("touchstart", preventTouchScroll, { passive: false });
+inputWrap.addEventListener("touchmove", preventTouchScroll, { passive: false });
+outputWrap.addEventListener("touchstart", preventTouchScroll, { passive: false });
+outputWrap.addEventListener("touchmove", preventTouchScroll, { passive: false });
 
 const panCanvases = [inputCanvas, outputCanvas];
 panCanvases.forEach((canvas) => {
