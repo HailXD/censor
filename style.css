@@ -1,15 +1,15 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
-  color-scheme: light;
-  --ink: #1f1f1b;
-  --muted: #5e5a54;
-  --panel: rgba(255, 255, 255, 0.78);
-  --panel-strong: rgba(255, 255, 255, 0.92);
-  --accent: #f26b3a;
-  --accent-2: #1e7c7a;
-  --line: rgba(31, 31, 27, 0.15);
-  --shadow: 0 12px 30px rgba(31, 31, 27, 0.12);
+  color-scheme: dark;
+  --ink: #e8e8e2;
+  --muted: #a0a096;
+  --panel: #15171a;
+  --panel-strong: #1b1e22;
+  --accent: #f0a15b;
+  --accent-2: #44b0a6;
+  --line: rgba(255, 255, 255, 0.1);
+  --shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -20,9 +20,8 @@ body {
   margin: 0;
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
   color: var(--ink);
-  background: radial-gradient(1200px 800px at 10% 5%, #fff0d7 0%, transparent 65%),
-    radial-gradient(900px 600px at 95% 20%, #d7f4f3 0%, transparent 60%),
-    linear-gradient(140deg, #f6efe7 0%, #e7eef1 55%, #f7f4ef 100%);
+  background: radial-gradient(900px 520px at 15% 12%, rgba(38, 45, 52, 0.45) 0%, transparent 55%),
+    linear-gradient(150deg, #0b0d10 0%, #101317 100%);
   min-height: 100vh;
 }
 
@@ -53,7 +52,7 @@ body {
 }
 
 h1 {
-  font-family: "Fraunces", serif;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
   font-size: clamp(2rem, 2vw + 1.5rem, 2.8rem);
   margin: 0 0 8px;
 }
@@ -96,7 +95,7 @@ h1 {
 .download-btn {
   background: var(--accent-2);
   color: #fff;
-  box-shadow: 0 8px 20px rgba(30, 124, 122, 0.28);
+  box-shadow: 0 8px 18px rgba(68, 176, 166, 0.25);
 }
 
 .download-btn:disabled {
@@ -111,7 +110,6 @@ h1 {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
   display: grid;
   gap: 12px;
 }
@@ -136,18 +134,18 @@ button {
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, border 0.2s ease;
-  box-shadow: 0 6px 16px rgba(31, 31, 27, 0.08);
+  transition: box-shadow 0.2s ease, border 0.2s ease, background 0.2s ease;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.32);
 }
 
 button:hover {
-  transform: translateY(-1px);
+  border-color: var(--line);
 }
 
 button.is-active {
   background: var(--accent);
-  color: #fff;
-  box-shadow: 0 8px 20px rgba(242, 107, 58, 0.3);
+  color: #1b130c;
+  box-shadow: 0 8px 18px rgba(240, 161, 91, 0.3);
 }
 
 button.ghost {
@@ -225,8 +223,8 @@ button:disabled {
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: #fff;
-  box-shadow: 0 4px 10px rgba(31, 31, 27, 0.18);
+  background: #f2efe6;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
   transform: translateX(0);
   transition: transform 0.2s ease;
 }
@@ -302,14 +300,14 @@ output {
   position: relative;
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid rgba(31, 31, 27, 0.25);
-  background: linear-gradient(135deg, rgba(31, 31, 27, 0.06) 25%, transparent 25%),
-    linear-gradient(225deg, rgba(31, 31, 27, 0.06) 25%, transparent 25%),
-    linear-gradient(45deg, rgba(31, 31, 27, 0.06) 25%, transparent 25%),
-    linear-gradient(315deg, rgba(31, 31, 27, 0.06) 25%, transparent 25%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(225deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(45deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%),
+    linear-gradient(315deg, rgba(255, 255, 255, 0.03) 25%, transparent 25%);
   background-position: 10px 0, 10px 0, 0 0, 0 0;
   background-size: 20px 20px;
-  background-color: #fdfbf8;
+  background-color: #0f1114;
   width: 100%;
   height: min(70vh, 640px);
   touch-action: none;
@@ -334,8 +332,7 @@ canvas {
   place-items: center;
   text-align: center;
   color: var(--muted);
-  background: rgba(253, 251, 248, 0.72);
-  backdrop-filter: blur(2px);
+  background: rgba(10, 11, 12, 0.78);
   padding: 24px;
 }
 
