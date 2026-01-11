@@ -11,6 +11,7 @@ const panel = document.querySelector(".panel");
 const fileInput = document.getElementById("file-input");
 const undoButton = document.getElementById("undo");
 const downloadButton = document.getElementById("download");
+const clearButton = document.getElementById("clear");
 const metadataToggle = document.getElementById("strip-metadata");
 
 const brushSizeInput = document.getElementById("brush-size");
@@ -115,6 +116,12 @@ const updateUndoState = () => {
 
 const updateDownloadState = () => {
   downloadButton.disabled = !hasImage;
+  clearButton.disabled = !hasImage;
+};
+
+const clearCanvas = (ctx, canvas) => {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 };
 
 const pushHistory = () => {
@@ -563,6 +570,34 @@ const zoomBy = (factor) => {
   zoomAt(rect.width / 2, rect.height / 2, factor);
 };
 
+const clearImage = () => {
+  if (!hasImage) return;
+  hasImage = false;
+  state.history = [];
+  state.isDrawing = false;
+  state.isHovering = false;
+  state.pointerTool = null;
+  state.isPanning = false;
+  state.scale = 1;
+  state.offsetX = 0;
+  state.offsetY = 0;
+  emptyState.hidden = false;
+  updateUndoState();
+  updateDownloadState();
+  resetStroke();
+  clearCanvas(sourceCtx, sourceCanvas);
+  clearCanvas(maskCtx, maskCanvas);
+  clearCanvas(previewMaskCtx, previewMaskCanvas);
+  clearCanvas(strokeCtx, strokeCanvas);
+  clearCanvas(overlayCtx, overlayCanvas);
+  clearCanvas(censoredCtx, censoredCanvas);
+  clearCanvas(effectCtx, effectCanvas);
+  clearCanvas(pixelCtx, pixelCanvas);
+  scheduleRender();
+  setStatus("Cleared image.");
+  fileInput.value = "";
+};
+
 const loadImage = (file) => {
   if (!file) return;
   const url = URL.createObjectURL(file);
@@ -639,6 +674,21 @@ document.addEventListener("paste", (event) => {
     event.preventDefault();
   }
 });
+
+const handleDragOver = (event) => {
+  event.preventDefault();
+};
+
+const handleDrop = (event) => {
+  event.preventDefault();
+  const files = Array.from(event.dataTransfer?.files || []);
+  const file = files.find((entry) => entry.type.startsWith("image/"));
+  if (!file) {
+    setStatus("Drop an image file.");
+    return;
+  }
+  loadImage(file);
+};
 
 const startStroke = (event) => {
   if (!hasImage) {
@@ -953,6 +1003,8 @@ inputCanvas.addEventListener("pointercancel", handlePointerCancel);
 inputCanvas.addEventListener("pointerleave", handlePointerLeave);
 inputCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
 inputWrap.addEventListener("click", handleInputClick);
+inputWrap.addEventListener("dragover", handleDragOver);
+inputWrap.addEventListener("drop", handleDrop);
 inputWrap.addEventListener("touchstart", preventTouchScroll, { passive: false });
 inputWrap.addEventListener("touchmove", preventTouchScroll, { passive: false });
 outputWrap.addEventListener("touchstart", preventTouchScroll, { passive: false });
@@ -997,6 +1049,7 @@ zoomFitButton.addEventListener("click", () => {
 
 undoButton.addEventListener("click", undo);
 downloadButton.addEventListener("click", downloadOutput);
+clearButton.addEventListener("click", clearImage);
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
