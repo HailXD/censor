@@ -1022,6 +1022,16 @@ panCanvases.forEach((canvas) => {
 const handleWheel = (event, canvas) => {
   if (!hasImage) return;
   event.preventDefault();
+  if (event.ctrlKey) {
+    const minSize = Number(brushSizeInput.min || 1);
+    const maxSize = Number(brushSizeInput.max || 200);
+    const delta = event.deltaY < 0 ? 4 : -4;
+    state.brushSize = clamp(state.brushSize + delta, minSize, maxSize);
+    brushSizeInput.value = String(state.brushSize);
+    updateOutputs();
+    scheduleRender();
+    return;
+  }
   const rect = canvas.getBoundingClientRect();
   const mx = event.clientX - rect.left;
   const my = event.clientY - rect.top;
@@ -1059,8 +1069,8 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey) return;
-  if (key === "e") {
-    state.tool = "eraser";
+  if (key === "q") {
+    state.tool = "brush";
     updateToolUI();
     scheduleRender();
     return;
@@ -1071,10 +1081,15 @@ window.addEventListener("keydown", (event) => {
     scheduleRender();
     return;
   }
-  if (key === "q") {
-    state.effect = "pixelate";
-    updateEffectUI();
-    rebuildOutput(state.isDrawing ? previewMaskCanvas : maskCanvas);
+  if (key === "e") {
+    state.tool = "fill";
+    updateToolUI();
+    scheduleRender();
+    return;
+  }
+  if (key === "r") {
+    state.tool = "eraser";
+    updateToolUI();
     scheduleRender();
   }
 });
