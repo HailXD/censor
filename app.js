@@ -7,6 +7,7 @@ const outputWrap = document.getElementById("output-wrap");
 const emptyState = document.getElementById("empty-state");
 const statusPill = document.getElementById("status");
 const panel = document.querySelector(".panel");
+const toolIndicator = document.getElementById("tool-indicator");
 
 const fileInput = document.getElementById("file-input");
 const undoButton = document.getElementById("undo");
@@ -171,6 +172,7 @@ const updateToolUI = () => {
     button.classList.toggle("is-active", button.dataset.tool === state.tool);
     button.setAttribute("aria-pressed", button.dataset.tool === state.tool);
   });
+  updateToolIndicator();
 };
 
 const updateShapeUI = () => {
@@ -178,6 +180,18 @@ const updateShapeUI = () => {
     button.classList.toggle("is-active", button.dataset.shape === state.shape);
     button.setAttribute("aria-pressed", button.dataset.shape === state.shape);
   });
+};
+
+const updateToolIndicator = () => {
+  if (!toolIndicator) return;
+  const tool = state.isDrawing && state.pointerTool ? state.pointerTool : state.tool;
+  const labels = {
+    brush: "Brush",
+    rect: "Rect",
+    fill: "Fill",
+    eraser: "Eraser",
+  };
+  toolIndicator.textContent = labels[tool] || "Tool";
 };
 
 const resizeCanvasToWrap = (canvas, wrap) => {
@@ -720,6 +734,7 @@ const startStroke = (event) => {
   state.hoverX = x;
   state.hoverY = y;
   state.isHovering = true;
+  updateToolIndicator();
   pushHistory();
   resetStroke();
   if (tool === "rect") {
@@ -766,6 +781,7 @@ const endStroke = (event) => {
     commitStroke();
     state.isDrawing = false;
     resetStroke();
+    updateToolIndicator();
     refreshDerivedCanvases();
     scheduleRender();
   }
@@ -781,6 +797,7 @@ const abortStroke = () => {
   state.isHovering = false;
   resetStroke();
   state.pointerTool = null;
+  updateToolIndicator();
   refreshDerivedCanvases();
   scheduleRender();
   if (state.history.length) {
@@ -1025,7 +1042,7 @@ const handleWheel = (event, canvas) => {
   if (event.ctrlKey) {
     const minSize = Number(brushSizeInput.min || 1);
     const maxSize = Number(brushSizeInput.max || 200);
-    const delta = event.deltaY < 0 ? 4 : -4;
+    const delta = event.deltaY < 0 ? 2 : -2;
     state.brushSize = clamp(state.brushSize + delta, minSize, maxSize);
     brushSizeInput.value = String(state.brushSize);
     updateOutputs();
